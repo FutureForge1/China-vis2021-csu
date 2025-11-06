@@ -1,0 +1,14 @@
+xarray
+netCDF4
+h5netcdf
+numpy
+pandas
+geopandas
+shapely
+pyproj
+tqdm
+concurrent-log-handler
+fastparquet
+pyarrow
+scikit-learn
+plotly
