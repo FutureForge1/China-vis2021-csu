@@ -6,12 +6,6 @@ pandas
 geopandas
 shapely
 pyproj
-tqdm
-concurrent-log-handler
-fastparquet
-pyarrow
-scikit-learn
-plotly
 h5py
 fiona
 rtree
