@@ -1,2 +1,5 @@
 /Data/raw/
 /Data/CN-Reanalysis20131231
+/.vscode/
+/.idea/
+/__pycache__/

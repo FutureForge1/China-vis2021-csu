@@ -57,7 +57,7 @@ VAR_BOUNDS = {
 
 # 温度自动转换设置：优先读取 netCDF 变量属性 units（若包含 'k' 或 'kelvin' 则视为开尔文），
 # 若缺失则回退到数值阈值检测（min > TEMP_KELVIN_THRESHOLD）
-AUTO_CONVERT_TEMP = True
+AUTO_CONVERT_TEMP = False
 TEMP_KELVIN_THRESHOLD = 100.0
 
 # IQR 离群值默认参数

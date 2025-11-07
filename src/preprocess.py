@@ -9,7 +9,6 @@ import pandas as pd
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed, wait, FIRST_COMPLETED
 import threading
-import time
 from .io_utils import record_tmp_dir, read_nc_bytes, read_nc_from_zip
 from .remove_outliers import remove_physical_bounds, remove_iqr_outliers
 from . import config as _config
@@ -76,7 +75,7 @@ def temporal_aggregation(items: List[dict], aggregation: str = 'daily', aggregat
     if not items:
         return pd.DataFrame()
 
-    # Fast mean-aggregation path
+    # 快速按均值聚合路径
     if aggregate_mean:
         first = items[0]
         lat = first.get('lat')
@@ -120,7 +119,7 @@ def temporal_aggregation(items: List[dict], aggregation: str = 'daily', aggregat
         df = pd.DataFrame(out)
         return df
 
-    # 将内存中的网格字典列表转换为 DataFrame的完整展开路径（每个网格单元每个项目一行）
+    # 将内存中的网格字典列表转换为 DataFrame 的完整展开路径（每个网格单元每个项目一行）
     rows = []
     for it in items:
         lat = it.get('lat')
@@ -186,12 +185,12 @@ def process_single_zip(zip_path: str,
     print(f"[task] start {zip_path}")
     sys.stdout.flush()
 
-    # Read all .nc files inside the zip and build hourly items list (matches run_single_day_quick behaviour)
+    # 读取 zip 中所有的 .nc 文件并构建每小时的 items 列表（行为与 run_single_day_quick 保持一致）
     items = []
     tmp_dirs = []
     tmp_dir = None
     try:
-        # list .nc names in zip
+    # 列出 zip 中的 .nc 成员名
         try:
             with zipfile.ZipFile(zip_path, 'r') as zf:
                 nc_names = sorted([n for n in zf.namelist() if n.lower().endswith('.nc')])
@@ -202,7 +201,7 @@ def process_single_zip(zip_path: str,
             for nc_name in nc_names:
                 ds = None
                 try:
-                    # try read bytes from zip and open in-memory
+                    # 尝试从 zip 读取字节并在内存中打开
                     raw = None
                     try:
                         raw = read_nc_bytes(zip_path, nc_name)
@@ -218,7 +217,7 @@ def process_single_zip(zip_path: str,
                             except Exception:
                                 ds = None
                     else:
-                        # fallback: try the io_utils helper which may extract to a tmp dir
+                        # 回退：尝试使用 io_utils 提供的 helper（可能会解压到临时目录）
                         try:
                             ds, t = read_nc_from_zip(zip_path)
                             if t:
@@ -230,7 +229,7 @@ def process_single_zip(zip_path: str,
                     if ds is None:
                         continue
 
-                    # build item from ds (same fields as before)
+                    # 从 ds 构建 item（字段与之前一致）
                     item = {}
                     for var in ['pm25', 'pm10', 'so2', 'no2', 'co', 'o3', 'temp', 'rh', 'psfc', 'u', 'v']:
                         if var in ds.variables:
@@ -246,7 +245,7 @@ def process_single_zip(zip_path: str,
                         item['lon'] = ds['lon2d'].values
                     elif 'lon' in ds.variables:
                         item['lon'] = ds['lon'].values
-                    # time: use day_basename as before
+                    # 时间字段：继续使用 day_basename
                     item['time'] = day_basename
 
                     items.append(item)
@@ -257,7 +256,7 @@ def process_single_zip(zip_path: str,
                     except Exception:
                         pass
         else:
-            # fallback to previous behaviour: open first .nc via helper
+            # 回退到以前的行为：通过 helper 打开第一个 .nc
             try:
                 ds, tmp_dir = read_nc_from_zip(zip_path)
                 # build single-item list so temporal_aggregation still works
@@ -283,7 +282,7 @@ def process_single_zip(zip_path: str,
                 items = []
     except Exception:
         items = []
-    # optional debug prints controlled by PREPROCESS_DEBUG
+    # 可选的调试打印，通过 PREPROCESS_DEBUG 控制
     _debug = os.environ.get('PREPROCESS_DEBUG', '') == '1'
     if _debug:
         try:
@@ -292,7 +291,7 @@ def process_single_zip(zip_path: str,
         except Exception:
             pass
 
-    # create day_df using temporal_aggregation; use aggregate_mean to avoid explosion
+    # 使用 temporal_aggregation 创建 day_df；当使用 aggregate_mean 可避免数据膨胀
     day_df = temporal_aggregation(items, aggregation='daily', aggregate_mean=aggregate_mean)
 
     if _debug:
@@ -302,7 +301,7 @@ def process_single_zip(zip_path: str,
         except Exception:
             pass
 
-    # ensure expected numeric vars exist
+    # 确保期望的数值列存在
     expected_vars = ['pm25', 'pm10', 'so2', 'no2', 'co', 'o3', 'temp', 'rh', 'psfc', 'u', 'v']
     for v in expected_vars:
         if v not in day_df.columns:
@@ -310,19 +309,19 @@ def process_single_zip(zip_path: str,
         else:
             day_df[v] = pd.to_numeric(day_df[v], errors='coerce')
 
-    # apply physical bounds where available
+    # 在可用时应用物理范围过滤
     if VAR_BOUNDS:
         try:
             day_df = remove_physical_bounds(day_df, VAR_BOUNDS, inplace=False)
         except Exception:
             pass
 
-    # IQR outlier removal
+    # IQR 离群值移除
     groupby_cols = IQR_GROUPBY if IQR_GROUPBY else ['lat', 'lon']
     numeric_cols = [c for c in expected_vars if c in day_df.columns]
     try:
         if numeric_cols:
-            # debug: show sizes before heavy IQR operation
+            # 调试：在执行耗时的 IQR 操作前打印大小信息
             if os.environ.get('PREPROCESS_DEBUG', '') == '1':
                 try:
                     nrows = len(day_df)
@@ -336,7 +335,7 @@ def process_single_zip(zip_path: str,
                 except Exception:
                     pass
 
-            # allow skipping IQR via env var for faster runs
+            # 允许通过环境变量跳过 IQR（以加速运行）
             if os.environ.get('PREPROCESS_SKIP_IQR', '') == '1':
                 if os.environ.get('PREPROCESS_DEBUG', '') == '1':
                     print("[iqr-debug] PREPROCESS_SKIP_IQR=1 set; using global percentile clip instead of group IQR")
@@ -367,8 +366,8 @@ def process_single_zip(zip_path: str,
             except Exception:
                 pass
 
-        # 过滤到中国并按需聚合到行政区
-        # 优化：一次映射唯一的四舍五入坐标（lat/lon），然后合并回来。
+    # 将点过滤到中国并按需聚合到行政区
+    # 优化：对唯一的四舍五入坐标（lat/lon）做一次映射，然后合并回主表。
         if granularity in ('city', 'province') and admin_geojson and os.path.exists(admin_geojson):
             from .geo_utils import map_points_to_admin, canonicalize_admin_mapping
 
@@ -378,9 +377,9 @@ def process_single_zip(zip_path: str,
                 coords['_lon_r'] = coords['lon'].round(4)
                 coords_unique = coords[['_lat_r', '_lon_r']].drop_duplicates().reset_index(drop=True).rename(columns={'_lat_r': 'lat', '_lon_r': 'lon'})
 
-                # map only unique rounded coords
+                # 只对唯一的四舍五入坐标进行映射
                 mapped_coords = map_points_to_admin(coords_unique, admin_geojson, level=granularity)
-                # debug information about mapping
+                # 映射相关的调试信息
                 if _debug:
                     try:
                         print('DEBUG mapped_coords.shape =', getattr(mapped_coords, 'shape', None))
@@ -392,15 +391,14 @@ def process_single_zip(zip_path: str,
                     except Exception:
                         pass
 
-                # ensure admin name column exists
+                # 确保存在 admin_name 列
                 if 'admin_name' not in mapped_coords.columns:
                     candidates = [c for c in mapped_coords.columns if any(tok in c.upper() for tok in ['NL_NAME_2','NL_NAME_1','NAME_2','NAME_1','PROVINCE','CITY','NL_NAME'])]
                     if candidates:
                         mapped_coords = mapped_coords.rename(columns={candidates[0]: 'admin_name'})
 
-                # Try to populate 'province' and 'city' from common GADM property names
-                # if they are missing. This is a lightweight, local-only massaging to
-                # avoid dropping rows when geojson uses different property names.
+                # 若缺少 'province' 或 'city'，尝试从常见的 GADM 属性名中填充。
+                # 这是一个轻量的本地处理逻辑，用于避免当 geojson 使用不同列名时丢失行。
                 if 'province' not in mapped_coords.columns:
                     prov_candidates = [c for c in mapped_coords.columns if any(tok in c.upper() for tok in ['NAME_1','NL_NAME_1','PROVINCE','ADM1','PRV'])]
                     if prov_candidates:
@@ -410,7 +408,7 @@ def process_single_zip(zip_path: str,
                     if city_candidates:
                         mapped_coords = mapped_coords.rename(columns={city_candidates[0]: 'city'})
 
-                # keep only necessary columns lat/lon/admin
+                # 仅保留必要的列：lat/lon/行政名相关列
                 keep_cols = ['lat', 'lon']
                 for c in ('admin_name', 'province', 'city'):
                     if c in mapped_coords.columns:
@@ -419,15 +417,15 @@ def process_single_zip(zip_path: str,
                 # rename back to rounded keys for merge
                 mapped_coords = mapped_coords.rename(columns={'lat': '_lat_r', 'lon': '_lon_r'})
 
-                # merge back using rounded coords
+                # 使用四舍五入坐标合并回主表
                 day_df['_lat_r'] = day_df['lat'].round(4)
                 day_df['_lon_r'] = day_df['lon'].round(4)
                 merged = day_df.merge(mapped_coords, how='left', left_on=['_lat_r', '_lon_r'], right_on=['_lat_r', '_lon_r'])
 
-                # canonicalize admin mapping (fill english if needed)
+                # 规范化行政映射（必要时填充英文名）
                 before_rows = len(merged)
                 merged, stats = canonicalize_admin_mapping(merged, fill_english_if_missing=True, sample_limit=50)
-                # Normalize placeholder strings ("NA", "N/A", "<NA>", empty) to real missing values
+                # 将占位字符串（"NA","N/A","<NA>",空串等）标准化为真实的缺失值
                 try:
                     placeholders = set(['', 'NA', 'N/A', 'NAN', '<NA>'])
                     for col in ('province', 'city', 'admin_name'):
@@ -451,8 +449,7 @@ def process_single_zip(zip_path: str,
                 except Exception:
                     pass
 
-                # debug: show raw english_samples content/count to help diagnose why
-                # the printing branch may be effectively skipped after filtering.
+                # 调试：打印原始 english_samples 的内容/数量，帮助诊断打印分支为何在过滤后被跳过。
                 if os.environ.get('PREPROCESS_DEBUG', '') == '1':
                     try:
                         raw_es = stats.get('english_samples')
@@ -486,10 +483,9 @@ def process_single_zip(zip_path: str,
                     except Exception:
                         pass
 
-                # If canonicalize missed some names, try explicit english-column fallback for rows
-                # where admin_name/province/city are still missing. Fill from any available
-                # english-like columns per-row; do NOT drop rows. Finally replace remaining
-                # NaNs with 'UNKNOWN' to ensure no NaNs in outputs.
+                # 如果 canonicalize 未能填充某些名称，尝试对仍缺少 admin_name/province/city 的行
+                # 使用显式的英文列作为回退。按行从任何可用的英文类列填充；不删除行。最后将剩余的 NaN
+                # 用 'UNKNOWN' 替代，确保输出中没有 NaN（注意：此处代码保留为尽量不覆盖已有中文值）。
                 try:
                     # Build candidate columns (broad set) but we'll prefer Chinese text when available.
                     cand_cols = [c for c in merged.columns if re.search(r'NAME|EN\b|ENG|VARNAME|NL_NAME|CITY|PROVINCE|ADM', c, re.I)]
@@ -549,14 +545,14 @@ def process_single_zip(zip_path: str,
                     else:
                         city_series = _choose_preferred(merged, city_cands)
 
-                    # admin_name: prefer existing admin_name, else compose from city/province if available
+                        # admin_name：优先保留已存在的 admin_name，否则在可用时由 city/province 组合得到
                     if 'admin_name' in merged.columns and merged['admin_name'].notna().any():
                         admin_series = merged['admin_name'].astype(object).where(merged['admin_name'].notna(), pd.NA)
                     else:
                         # prefer city, then province
                         admin_series = city_series.where(city_series.notna(), prov_series)
 
-                    # assign back (do not overwrite existing non-null values)
+                        # 赋值回列（不要覆盖已有的非空值）
                     merged['province'] = merged.get('province').where(merged.get('province').notna(), prov_series)
                     merged['city'] = merged.get('city').where(merged.get('city').notna(), city_series)
                     merged['admin_name'] = merged.get('admin_name').where(merged.get('admin_name').notna(), admin_series)
@@ -574,13 +570,13 @@ def process_single_zip(zip_path: str,
                 except Exception:
                     pass
 
-                # ensure numeric and aggregate
+                # 强制数值列为数值类型并进行聚合
                 for v in expected_vars:
                     if v not in merged.columns:
                         merged[v] = pd.NA
                     merged[v] = pd.to_numeric(merged[v], errors='coerce')
 
-                # aggregate numeric columns by province + city (Chinese names preferred)
+                # 以 province+city 为键聚合数值列（优先使用中文名称）
                 agg_numeric_cols = [c for c in numeric_cols]
                 if 'province' in merged.columns and 'city' in merged.columns:
                     agg = merged.groupby(['province', 'city'])[agg_numeric_cols].mean().reset_index()
@@ -603,7 +599,7 @@ def process_single_zip(zip_path: str,
                         pass
                 return saved
             except Exception as e:
-                # mapping/aggregation failed; fallback to grid-level save and log the error
+            # 映射/聚合失败；回退为网格级别保存并记录错误
                 if _debug:
                     try:
                         print(f"[task-debug] admin mapping failed for {zip_path}: {e}")
@@ -614,7 +610,7 @@ def process_single_zip(zip_path: str,
                 # continue to fallback to grid-level save below
                 pass
 
-        # default: grid-level save (drop time column to match previous behaviour)
+    # 默认：按网格级别保存（删除 time 列以保持与以前行为一致）
         if 'time' in day_df.columns:
             try:
                 day_df = day_df.drop(columns=['time'])
@@ -631,7 +627,7 @@ def process_single_zip(zip_path: str,
         return saved
 
     finally:
-        # close any lingering dataset (most were closed inline) and cleanup tmp dirs
+    # 关闭任何残留的 dataset（大多数已在上文关闭）并清理临时目录
         try:
             if tmp_dir:
                 if DEFER_CLEANUP:
@@ -689,7 +685,7 @@ def process_zips_parallel(base_path: str,
     args_list = [(zp, granularity, admin_geojson, None, aggregate_mean) for zp in zip_paths]
 
     with ThreadPoolExecutor(max_workers=workers) as ex:
-        # start a heartbeat thread when debugging to show periodic progress
+    # 在调试模式下启动心跳线程以周期性显示进度
         _debug = os.environ.get('PREPROCESS_DEBUG', '') == '1'
         stop_event = threading.Event()
 
@@ -710,7 +706,7 @@ def process_zips_parallel(base_path: str,
         total = len(futures)
         print(f"submitted {total} jobs to thread pool (workers={workers})")
         completed_count = 0
-        # Iterate as futures complete; this is simpler and avoids subtle bugs with wait/pending sets
+    # 随着 futures 完成逐个处理结果；这种方式更简单并避免与 wait/pending 集合相关的微妙错误
         for fut in as_completed(futures):
             zp = futures.get(fut)
             try:
@@ -725,7 +721,7 @@ def process_zips_parallel(base_path: str,
                 failed.append({'file': zp, 'error': str(e)})
                 print(f"error retrieving result for {zp}: {e}")
             completed_count += 1
-            # periodic progress heartbeat
+            # 周期性进度心跳打印
             if completed_count % 10 == 0 or completed_count == total:
                 print(f"progress... {completed_count}/{total} completed; failed {len(failed)}")
 
