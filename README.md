@@ -52,74 +52,94 @@
 
 建议使用 Conda 环境并在 `conda-forge` 中安装二进制包：
 
+# 项目说明文档（中文）
+
+本仓库实现了针对 NetCDF（.nc）数据的处理流水线，目标是从 ZIP 包中读取数据、生成日级中间产物、再按月/行政区聚合并输出供前端可视化使用（ECharts JSON）。
+
+本 README 侧重于：仓库结构说明、运行示例（Windows/cmd）、重要环境变量以及迁移到 `processing/` 模块时的注意事项。
+
+## 主要功能概览
+
+- 从 ZIP 中读取 .nc（优先在内存中打开以避免落盘，受 `MAX_IN_MEMORY_BYTES` 与 ENV 控制）
+- 数据清洗（边界过滤、IQR 离群值移除或全局分位裁剪）
+- 将格点数据映射到行政区（市/省）并按行政区聚合
+- 保存日级中间结果（`resources/processed/...`），并按月合并到 `resources/aggregated/...`，最后输出 ECharts JSON 到 `resources/output/`。
+
+## 目录结构（重要文件/文件夹）
+
+- `processing/`：处理模块（包含 `processing/src/` 与 `processing/main.py`）。
+- `resources/`：数据根目录（推荐放在仓库根）。包含：
+  - `raw/`（ZIP 原始数据，建议按年分子目录）
+  - `processed/`（日级中间结果，按粒度如 `city` 或 `grid`）
+  - `aggregated/`（月度/年聚合结果）
+  - `output/`（最终可视化产物，例如 ECharts JSON）
+- `src/`：主实现代码
+  - `src/config.py`：全局路径与运行参数（`MAX_IN_MEMORY_BYTES`、`TMP_CLEANUP_MANIFEST` 等）
+  - `src/io_utils.py`：内存优先读取 ZIP/.nc、临时目录管理与清理接口
+  - `src/preprocess.py`、`src/aggregate.py`、`src/visualize.py` 等：核心处理与导出逻辑
+- `tmp_dirs_to_cleanup.json`：记录需要手动/延迟清理的临时目录（当 `DEFER_CLEANUP=True` 时写入）
+
+## 快速安装（建议使用 conda）
+
 ```cmd
-conda create -n demo_env python=3.10 -y
-conda activate demo_env
-# 推荐先用 conda 安装 geopandas/netCDF4 等以避免编译问题
+conda create -n vis_env python=3.10 -y
+conda activate vis_env
 conda install -c conda-forge geopandas netcdf4 h5py gdal fiona rtree -y
 pip install -r requirements.txt
 ```
 
-重要环境变量：
-- `PREPROCESS_DEBUG=1`：启用调试打印（会输出临时目录、内存尝试、映射样例等）。
-- `PREPROCESS_FORCE_DISK=1|0`：如果设置为 `1` 强制使用磁盘解压（适合遇到内存/后端兼容问题时）；设置为 `0` 则允许尝试内存打开（若后端与文件大小允许）。
-- `PREPROCESS_SKIP_IQR=1`：跳过按组 IQR 运算，改用全局分位数裁剪（更快，行为等价于 `run_single_day_quick.py` 的快速模式）。
-- `MAX_IN_MEMORY_BYTES`：在 `src/config.py` 中配置（默认为 300MB），决定何时尝试把 `.nc` 完整读入内存并立即删除临时文件。
+## 常用环境变量与纯内存模式
 
-### 纯内存模式（避免创建临时文件/解压）
+- `PREPROCESS_DEBUG=1`：启用详细调试输出（推荐在排查 I/O/后端问题时启用）。
+- `PREPROCESS_PURE_MEMORY=1`：严格启用纯内存模式，禁止在磁盘写入临时文件（仅在后端支持且内存足够时可用）。
+- `PREPROCESS_ALLOW_DISK_FALLBACK=1`：允许在内存打开失败时回退到磁盘解压（默认不允许）。
+- `PREPROCESS_FORCE_DISK=1`：强制使用磁盘解压（与历史行为兼容）。
+- `MAX_IN_MEMORY_BYTES`：在 `src/config.py` 中配置（默认 300MB），决定是否尝试把 .nc 读入内存。
 
-如果你的磁盘空间极其紧张，希望**尽可能不在磁盘上创建临时文件或目录**，可以启用项目的“纯内存”模式。该模式的设计原则是：优先在内存中打开 ZIP 内的 `.nc` 成员，只有在明确允许回退到磁盘的情况下才会解压。
-
-主要控制项（环境变量 / API）：
-- `PREPROCESS_PURE_MEMORY=1`：严格启用纯内存模式（推荐通过此环境变量在进程启动前设置）。当启用后，代码会禁止创建临时目录或写入磁盘，内存打开失败将抛出错误并停止处理。
-- `PREPROCESS_ALLOW_DISK_FALLBACK=1`：允许在内存打开全部失败时回退到磁盘解压（默认**不允许**）。仅在你明确有磁盘空间并接受回退行为时设置。
-- `PREPROCESS_FORCE_DISK=1|0`：与历史行为兼容，设置为 `1` 强制解压到磁盘（不推荐当你磁盘空间紧张时使用）；设置为 `0` 则允许内存优先策略。
-- 运行时 API：`from src.io_utils import set_pure_memory; set_pure_memory(True)` 可在进程中切换纯内存模式（仅影响当前进程）。
-
-实现细节与注意事项：
-- 实现优先使用不依赖 HDF5/C 库的 xarray 后端（优先尝试 `h5netcdf` 和 `scipy`）从内存字节流打开 `.nc`。如果这些后端不可用，代码会作为最后手段尝试 `netCDF4` 的 memory 模式以提高兼容性。
-- 纯内存模式下若后端不满足（未安装支持的 engine 或文件过大超出 `MAX_IN_MEMORY_BYTES`），将直接抛出错误，而不会隐式写盘或创建临时目录。
-- 若你希望最大概率成功且可以接受回退解压，请设置 `PREPROCESS_ALLOW_DISK_FALLBACK=1`；否则请确保系统安装 `h5netcdf` 或 `scipy` 对应的 xarray 后端。
-- 调试建议：将 `PREPROCESS_DEBUG=1` 打开以查看尝试的后端、字节大小以及失败原因。
-
-示例（Windows cmd.EXE）：
-
-1) 严格纯内存（禁止写盘回退，推荐在磁盘空间不足时使用）：
+示例（Windows cmd）：
 
 ```cmd
+REM 严格纯内存（失败时不回退到磁盘）
 set PREPROCESS_PURE_MEMORY=1
-set PREPROCESS_FORCE_DISK=0
 set PREPROCESS_DEBUG=1
-python main.py
-```
+python main.py --step all --year 2013
 
-2) 允许失败时回退到磁盘（更兼容，但可能会写入临时文件）：
-
-```cmd
+REM 允许回退到磁盘（更兼容，但会写入临时文件）
 set PREPROCESS_ALLOW_DISK_FALLBACK=1
 set PREPROCESS_DEBUG=1
-python main.py
+python main.py --step extract --year 2013
 ```
 
-3) 恢复默认行为或强制磁盘（与旧版本一致）：
+## 运行 `processing`（示例）
 
 ```cmd
-set PREPROCESS_FORCE_DISK=1
-python main.py
+REM 使用默认 python
+python processing/main.py --step export --year 2013
+
+REM 使用指定 conda env 的 python（你的示例路径）
+E:\Anaconda\envs\fgo_downloader\python.exe g:/学习相关/可视化计算/China-VIS2021/processing/main.py --step all --year 2013
 ```
 
-在实际运行时，如果你看到仍有临时目录产生，请分享 `PREPROCESS_DEBUG=1` 的输出（或 `tmp_dirs_to_cleanup.json` 内容），我会帮助定位具体是哪段路径仍在写盘并修复它。
+参数说明快速参考：
+- `--step`: `extract` | `aggregate` | `export` | `all`（默认 `all`）
+- `--year`: 指定年份（例如 2013）
+- `--processed-root`: 指定 day-level 文件位置（覆盖 `src/config.PROCESSED_DIR`）
+- `--aggregated-dir`: 指定聚合目录（覆盖 `src/config.AGGREGATED_DIR`）
 
-## 临时文件与清理策略
+## 临时目录与清理
 
-- 默认在 Windows 上为稳妥起见，代码倾向于使用磁盘解压（可通过 `PREPROCESS_FORCE_DISK=0` 改变）。
-- 当启用内存读取并且文件小于阈值时，函数会 `ds.load()` 把数据完整加载到内存，关闭底层文件句柄并尝试立即删除临时目录，从而减少持久临时文件。
-- 若删除失败或采用了 fallback ASCII 目录，会把目录记录到 `tmp_dirs_to_cleanup.json`，你可在任意时间运行：
+- 代码会在出现回退或特殊情况时，把临时目录路径写入 `tmp_dirs_to_cleanup.json`（默认位于仓库根），以便集中清理：
 
 ```py
 from src.io_utils import cleanup_tmp_dirs
 cleanup_tmp_dirs()
 ```
+
+## 调试常见问题（简要）
+
+1. 内存/后端错误：在 Windows 上优先用 conda 安装 `netcdf4`/`h5py`，或开启 `PREPROCESS_FORCE_DISK=1` 回退解压；减少 `MAX_IN_MEMORY_BYTES` 可降低内存压力。
+2. 处理不到数据：确认 `resources/raw/`（或 `processing/resources/raw/`）下是否有 zip，或通过 `--processed-root`/`--aggregated-dir` 指向正确位置。
+3. 地理映射（行政区为空）：检查 `gadm` GeoJSON 是否正确放置并与 `src/geo_utils.py` 中的字段候选项匹配。
 
 ## 调试常见问题
 
