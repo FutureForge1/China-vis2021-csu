@@ -18,7 +18,7 @@ from .util.geo_utils import map_points_to_admin, canonicalize_admin_mapping
 # 默认聚合方式
 DEFAULT_AGGREGATE_MEAN = getattr(_config, 'DEFAULT_AGGREGATE_MEAN', True)
 
-def _save_df_by_year_granularity(df: pd.DataFrame, day_basename: str, granularity: str) -> str:
+def _save_df_by_year_granularity(df: pd.DataFrame, day_basename: str, granularity: str, no_mapping: bool = False) -> str:
     """保存数据框到 PROCESSED_DIR，按年/月/日和粒度组织。
 
     day_basename 预期格式为 'YYYYMMDD'（8 个字符）。如果不存在，则保存到 year=unknown。
@@ -40,32 +40,87 @@ def _save_df_by_year_granularity(df: pd.DataFrame, day_basename: str, granularit
     else:
         out_dir = os.path.join(PROCESSED_DIR, str(granularity), str(year), f"{month:02d}", f"{day:02d}")
     os.makedirs(out_dir, exist_ok=True)
-    parquet_path = os.path.join(out_dir, f"{day_basename}.parquet")
+
+    # 优先尝试保存为 JSON 格式
+    json_path = os.path.join(out_dir, f"{day_basename}.json")
     try:
+        # 准备要保存的数据
+        save_df = df.copy()
+
+        # 根据映射模式决定输出格式
+        if no_mapping:
+            # 无映射模式：保留 lat 和 lon 列
+            if 'lat' not in save_df.columns:
+                save_df['lat'] = '0.0'
+            if 'lon' not in save_df.columns:
+                save_df['lon'] = '0.0'
+        else:
+            # 映射模式：确保province和city列存在
+            if 'province' not in save_df.columns:
+                save_df['province'] = 'Unknown'
+            if 'city' not in save_df.columns:
+                save_df['city'] = 'Unknown'
+
+        # 转换所有数值列为字符串（保持与现有JSON格式一致）
+        numeric_cols = save_df.select_dtypes(include=[np.number]).columns
+        for col in numeric_cols:
+            save_df[col] = save_df[col].astype(str)
+
         if os.environ.get('PREPROCESS_DEBUG', '') == '1':
             try:
-                print(f"[save-debug] writing parquet to {parquet_path}; rows={len(df)} cols={len(df.columns)}")
+                print(f"[save-debug] writing json to {json_path}; rows={len(save_df)} cols={len(save_df.columns)}")
                 sys.stdout.flush()
             except Exception:
                 pass
-        df.to_parquet(parquet_path)
+
+        # 保存为JSON数组格式（每行一个对象）
+        try:
+            records = save_df.to_dict('records')
+            with open(json_path, 'w', encoding='utf-8') as f:
+                f.write('[\n')
+                for i, record in enumerate(records):
+                    import json
+                    json_str = json.dumps(record, ensure_ascii=False)
+                    if i < len(records) - 1:
+                        f.write(f'  {json_str},\n')
+                    else:
+                        f.write(f'  {json_str}\n')
+                f.write(']\n')
+        except Exception as e:
+            if os.environ.get('PREPROCESS_DEBUG', '') == '1':
+                try:
+                    print(f"[save-debug] json write failed with exception: {e}")
+                    sys.stdout.flush()
+                except Exception:
+                    pass
+            raise e
+
         if os.environ.get('PREPROCESS_DEBUG', '') == '1':
             try:
-                print(f"[save-debug] parquet write complete: {parquet_path}")
+                print(f"[save-debug] json write complete: {json_path}")
                 sys.stdout.flush()
             except Exception:
                 pass
-        return parquet_path
-    except Exception:
-        csv_path = os.path.join(out_dir, f"{day_basename}.csv")
+        return json_path
+
+    except Exception as e:
         if os.environ.get('PREPROCESS_DEBUG', '') == '1':
             try:
-                print(f"[save-debug] parquet write failed, falling back to csv: {csv_path}")
+                print(f"[save-debug] json write failed: {e}, falling back to parquet")
                 sys.stdout.flush()
             except Exception:
                 pass
-        df.to_csv(csv_path, index=False)
-        return csv_path
+
+        # 回退到 parquet 格式
+        parquet_path = os.path.join(out_dir, f"{day_basename}.parquet")
+        try:
+            df.to_parquet(parquet_path)
+            return parquet_path
+        except Exception:
+            # 最后的回退到 CSV
+            csv_path = os.path.join(out_dir, f"{day_basename}.csv")
+            df.to_csv(csv_path, index=False)
+            return csv_path
 
 def temporal_aggregation(items: List[dict], aggregation: str = 'daily', aggregate_mean: bool = False) -> pd.DataFrame:
     """将内存中的网格字典列表转换为 DataFrame。
@@ -168,7 +223,8 @@ def process_single_zip(zip_path: str,
                        granularity: str = 'grid',
                        admin_geojson: Optional[str] = None,
                        amap_key: Optional[str] = None,
-                       aggregate_mean: bool = DEFAULT_AGGREGATE_MEAN) -> str:
+                       aggregate_mean: bool = DEFAULT_AGGREGATE_MEAN,
+                       no_mapping: bool = False) -> str:
     """处理单个 zip 文件（包含一天的每小时 .nc 文件）并保存结果。
 
     使用 io_utils 中的 read_nc_from_zip 避免手动提取。
@@ -337,7 +393,7 @@ def process_single_zip(zip_path: str,
                     pass
 
             # 允许通过环境变量跳过 IQR（以加速运行）
-            if os.environ.get('PREPROCESS_SKIP_IQR', '') == '1':
+            if True:
                 if os.environ.get('PREPROCESS_DEBUG', '') == '1':
                     print("[iqr-debug] PREPROCESS_SKIP_IQR=1 set; using global percentile clip instead of group IQR")
                     sys.stdout.flush()
@@ -369,7 +425,7 @@ def process_single_zip(zip_path: str,
 
     # 将点过滤到中国并按需聚合到行政区
     # 优化：对唯一的四舍五入坐标（lat/lon）做一次映射，然后合并回主表。
-        if granularity in ('city', 'province') and admin_geojson and os.path.exists(admin_geojson):
+        if not no_mapping and granularity in ('city', 'province') and admin_geojson and os.path.exists(admin_geojson):
             try:
                 coords = day_df[['lat', 'lon']].dropna().copy()
                 coords['_lat_r'] = coords['lat'].round(4)
@@ -589,7 +645,7 @@ def process_single_zip(zip_path: str,
                 else:
                     agg = merged[agg_numeric_cols].mean().to_frame().T
 
-                saved = _save_df_by_year_granularity(agg, day_basename, granularity)
+                saved = _save_df_by_year_granularity(agg, day_basename, granularity, no_mapping=False)
                 if _debug:
                     try:
                         print(f"[task-debug] saved aggregated admin file: {saved}")
@@ -616,7 +672,7 @@ def process_single_zip(zip_path: str,
             except Exception:
                 pass
 
-        saved = _save_df_by_year_granularity(day_df, day_basename, 'grid')
+        saved = _save_df_by_year_granularity(day_df, day_basename, 'grid', no_mapping=no_mapping)
         if _debug:
             try:
                 print(f"[task-debug] saved grid file: {saved}")
@@ -651,9 +707,9 @@ def process_single_zip(zip_path: str,
 
 
 def _worker_wrapper(args: Tuple) -> Tuple[str, bool, str]:
-    zip_path, granularity, admin_geojson, amap_key, aggregate_mean = args
+    zip_path, granularity, admin_geojson, amap_key, aggregate_mean, no_mapping = args
     try:
-        res = process_single_zip(zip_path, granularity=granularity, admin_geojson=admin_geojson, amap_key=amap_key, aggregate_mean=aggregate_mean)
+        res = process_single_zip(zip_path, granularity=granularity, admin_geojson=admin_geojson, amap_key=amap_key, aggregate_mean=aggregate_mean, no_mapping=no_mapping)
         return zip_path, True, res
     except Exception as e:
         return zip_path, False, str(e)
@@ -665,15 +721,20 @@ def process_zips_parallel(base_path: str,
                           granularity: str = 'grid',
                           admin_geojson: Optional[str] = None,
                           workers: int = 4,
-                          aggregate_mean: bool = DEFAULT_AGGREGATE_MEAN) -> Tuple[List[str], List[Dict]]:
+                          aggregate_mean: bool = DEFAULT_AGGREGATE_MEAN,
+                          no_mapping: bool = False) -> Tuple[List[str], List[Dict]]:
     zip_paths = []
     # expect files named CN-Reanalysis{YYYY}{MM}{DD}.zip
-    for month in range(1, 13):
-        for day in range(1, 32):
-            name = f"CN-Reanalysis{year}{month:02d}{day:02d}.zip"
-            p = os.path.join(base_path, name)
-            if os.path.exists(p):
-                zip_paths.append(p)
+    import glob
+    # First try in year subdirectory
+    year_dir = os.path.join(base_path, str(year))
+    if os.path.isdir(year_dir):
+        pattern = os.path.join(year_dir, f"CN-Reanalysis{year}*.zip")
+        zip_paths = sorted(glob.glob(pattern))
+    # If not found in year subdirectory, try directly in base_path
+    if not zip_paths:
+        pattern = os.path.join(base_path, f"CN-Reanalysis{year}*.zip")
+        zip_paths = sorted(glob.glob(pattern))
 
     print(f"found {len(zip_paths)} zip(s) to process in {base_path} for year {year}")
     saved = []
@@ -681,7 +742,7 @@ def process_zips_parallel(base_path: str,
     if not zip_paths:
         return saved, failed
 
-    args_list = [(zp, granularity, admin_geojson, None, aggregate_mean) for zp in zip_paths]
+    args_list = [(zp, granularity, admin_geojson, None, aggregate_mean, no_mapping) for zp in zip_paths]
 
     with ThreadPoolExecutor(max_workers=workers) as ex:
     # 在调试模式下启动心跳线程以周期性显示进度
