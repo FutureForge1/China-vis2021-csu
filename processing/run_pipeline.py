@@ -39,25 +39,27 @@ def cmd_extract(args):
                 print(f"Found zip(s) for year {args.year} under {BASE_PATH}; using base={base}")
 
     print(f"Extracting zips from {base} for year {args.year} -> granularity={args.granularity}")
-    # 如果用户未指定 admin geojson，则尝试使用仓库下的 GADM 文件作为默认（若存在）
-    admin_geo = args.admin_geojson
-    if not admin_geo:
-        candidate = os.path.join(RESOURCE_DIR, 'GADM', 'gadm41_CHN_2.json')
-        if os.path.exists(candidate):
-            admin_geo = candidate
-            print(f"Using default admin geojson: {admin_geo}")
+    print(f"Output format: JSON (no_mapping={getattr(args, 'no_mapping', False)})")
 
-    # If the user didn't provide an explicit max_inflight, choose a conservative default
-    # to avoid submitting hundreds of concurrent futures on machines with limited resources.
-    if getattr(args, 'max_inflight', None) is None:
-        # default scales with worker count but has a sensible minimum
-        args.max_inflight = max(8, args.workers * 8)
-        print(f"max_inflight not provided, using conservative default: {args.max_inflight}")
+    # 如果用户未指定 admin geojson，则优先使用中国_市.pretty.json，其次尝试 GADM 文件
+    admin_geo = args.admin_geojson
+    if not admin_geo and not getattr(args, 'no_mapping', False):
+        # 优先使用中国_市.pretty.json
+        candidate1 = os.path.join(RESOURCE_DIR, '中国_市.pretty.json')
+        if os.path.exists(candidate1):
+            admin_geo = candidate1
+            print(f"Using default admin geojson: {admin_geo}")
+        else:
+            # 回退到 GADM 文件（保持兼容性）
+            candidate2 = os.path.join(RESOURCE_DIR, 'GADM', 'gadm41_CHN_2.json')
+            if os.path.exists(candidate2):
+                admin_geo = candidate2
+                print(f"Using fallback admin geojson: {admin_geo}")
 
     saved, failed = process_zips_parallel(base, args.year, granularity=args.granularity,
                                           admin_geojson=admin_geo, workers=args.workers,
                                           aggregate_mean=args.aggregate_mean,
-                                          max_inflight=args.max_inflight)
+                                          no_mapping=getattr(args, 'no_mapping', False))
     print(f"done: saved={len(saved)} failed={len(failed)}")
 
 
@@ -144,9 +146,8 @@ def main():
     e.add_argument('--granularity', choices=['grid', 'city', 'province'], default='city')
     e.add_argument('--admin-geojson', help='path to admin geojson for city/province mapping')
     e.add_argument('--workers', type=int, default=4)
-    e.add_argument('--max-inflight', type=int, default=None,
-                   help='maximum number of submitted but not-yet-completed tasks (limits resources)')
     e.add_argument('--aggregate-mean', action='store_true', help='use quick aggregate_mean in preprocessing')
+    e.add_argument('--no-mapping', action='store_true', help='skip admin mapping and save raw grid data (filtered to China bounds)')
     e.set_defaults(func=cmd_extract)
 
     a = sp.add_parser('aggregate', help='aggregate saved daily files into monthly summaries')
