@@ -41,7 +41,7 @@ def _save_df_by_year_granularity(df: pd.DataFrame, day_basename: str, granularit
         out_dir = os.path.join(PROCESSED_DIR, str(granularity), str(year), f"{month:02d}", f"{day:02d}")
     os.makedirs(out_dir, exist_ok=True)
 
-    # 优先尝试保存为 JSON 格式
+    # 保存为 JSON 格式
     json_path = os.path.join(out_dir, f"{day_basename}.json")
     try:
         # 准备要保存的数据
@@ -737,9 +737,50 @@ def process_zips_parallel(base_path: str,
         zip_paths = sorted(glob.glob(pattern))
 
     print(f"found {len(zip_paths)} zip(s) to process in {base_path} for year {year}")
+
+    # 断线重连机制：过滤掉已处理的 ZIP 文件
+    if zip_paths:
+        # 检查输出目录中已存在的文件
+        output_base_dir = os.path.join(PROCESSED_DIR, granularity, str(year))
+        existing_files = set()
+
+        if os.path.exists(output_base_dir):
+            # 递归查找所有已存在的 JSON 文件
+            for root, dirs, files in os.walk(output_base_dir):
+                for file in files:
+                    if file.endswith('.json'):
+                        # 从文件名提取日期部分 YYYYMMDD
+                        basename = os.path.splitext(file)[0]
+                        existing_files.add(basename)
+
+        # 过滤掉已处理的 ZIP 文件
+        filtered_zip_paths = []
+        skipped_count = 0
+
+        for zip_path in zip_paths:
+            # 从 ZIP 文件名提取日期：CN-Reanalysis20180101.zip -> 20180101
+            basename = os.path.basename(zip_path)
+            date_part = basename.replace('CN-Reanalysis', '').replace('.zip', '')
+
+            if date_part in existing_files:
+                skipped_count += 1
+                try:
+                    print(f"[skip] 已存在，跳过: {basename}")
+                    sys.stdout.flush()
+                except Exception:
+                    pass
+            else:
+                filtered_zip_paths.append(zip_path)
+
+        if skipped_count > 0:
+            print(f"断线重连: 跳过 {skipped_count} 个已处理的 ZIP 文件，还需处理 {len(filtered_zip_paths)} 个")
+
+        zip_paths = filtered_zip_paths
+
     saved = []
     failed = []
     if not zip_paths:
+        print("所有文件都已处理完成，无需继续处理")
         return saved, failed
 
     args_list = [(zp, granularity, admin_geojson, None, aggregate_mean, no_mapping) for zp in zip_paths]

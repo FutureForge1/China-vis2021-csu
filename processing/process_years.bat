@@ -7,10 +7,10 @@ REM 自动处理多个年份的数据 - 仅省市映射模式
 
 REM ===== 配置参数 - 请修改这里 =====
 REM 添加要处理的年份，用空格分隔
-set YEARS=2017 2018 2019
+set YEARS=2013
 
 REM 工作线程数（建议4-8，根据CPU核心数调整）
-set WORKERS=4
+set WORKERS=8
 
 REM ===== 环境变量设置 =====
 set PREPROCESS_SKIP_IQR=1
