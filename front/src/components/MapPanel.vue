@@ -26,6 +26,7 @@ const props = defineProps({
   scatter: { type: Array, default: () => [] }, // [{name, value, coord:[lon,lat]}]
   wind: { type: Array, default: () => [] }, // [{coords:[[lon,lat],[lon2,lat2]], speed}]
   flow: { type: Array, default: () => [] }, // densified lines for flow effect
+  heatmap: { type: Array, default: () => [] }, // [[lon,lat,val]]
 });
 
 const emit = defineEmits(["select"]);
@@ -36,7 +37,10 @@ const chartOption = computed(() => {
   const useScatter = props.scatter.length > 0;
   const useWind = props.wind.length > 0;
   const useFlow = props.flow.length > 0;
-  const values = useFlow
+  const useHeatmap = props.heatmap.length > 0;
+  const values = useHeatmap
+    ? props.heatmap.map((d) => Number(d[2] ?? 0))
+    : useFlow
     ? props.flow.map((d) => Number(d.speed ?? 0))
     : useWind
     ? props.wind.map((d) => Number(d.speed ?? 0))
@@ -57,7 +61,7 @@ const chartOption = computed(() => {
       formatter: (p) =>
         `${p.name}<br/>${props.metric.toUpperCase()}: ${p.value ?? "-"}`,
     },
-    geo: useScatter || useWind || useFlow
+    geo: useScatter || useWind || useFlow || useHeatmap
       ? {
           map: "china",
           roam: true,
@@ -66,6 +70,15 @@ const chartOption = computed(() => {
       : undefined,
     visualMap: useWind || useFlow
       ? undefined
+      : useHeatmap
+      ? {
+          min,
+          max: max === min ? min + 1 : max,
+          calculable: true,
+          inRange: { color: ["#fef3c7", "#fbbf24", "#ef4444", "#7f1d1d"] },
+          right: 10,
+          bottom: 20,
+        }
       : {
           min,
           max: max === min ? min + 1 : max,
@@ -95,6 +108,15 @@ const chartOption = computed(() => {
             },
             encode: { value: 2 },
             itemStyle: { color: palette[palette.length - 1], opacity: 0.7 },
+          }
+        : useHeatmap
+        ? {
+            name: props.metric,
+            type: "heatmap",
+            coordinateSystem: "geo",
+            data: props.heatmap,
+            pointSize: 10,
+            blurSize: 25,
           }
         : {
             name: props.metric,

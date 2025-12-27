@@ -56,6 +56,7 @@
               :metric="metric"
               :title="`地图：${metric}`"
               :scatter="scatterPoints"
+              :heatmap="heatmapPoints"
               :selected-name="selectedRegion"
               @select="handleMapSelect"
             />
@@ -101,14 +102,33 @@
 
         <section class="layout secondary">
           <div class="pane">
-            <AQIRanking :items="aqiRanking" @select="handleRankingSelect" />
-          </div>
-          <div class="pane">
             <ParallelAQI :rows="parallelRows" @select="handleParallelSelect" />
             <div class="parallel-actions">
               <span>当前维度：{{ parallelLevel === "province" ? "省均值" : `城市（${parallelProvince || "未选"}` }} </span>
               <button @click="resetParallel">重置到省</button>
             </div>
+          </div>
+          <div class="pane">
+            <AQIRanking :items="aqiRanking" @select="handleRankingSelect" />
+          </div>
+        </section>
+
+        <section class="layout secondary">
+          <div class="pane">
+            <CityStackedPie
+              :city="selectedCity"
+              :day-values="cityDayValues"
+              :month-stats="cityMonthStats"
+              :month="currentDate.slice(0, 7)"
+            />
+          </div>
+          <div class="pane">
+            <CityTypeRibbon
+              :dates="cityTypeRibbon.dates"
+              :series="cityTypeRibbon.series"
+              :type-order="cityTypeRibbon.typeOrder"
+              :province="selectedRegion"
+            />
           </div>
         </section>
       </template>
@@ -177,10 +197,15 @@
 
         <section class="layout secondary">
           <div class="pane">
-            <TypeScatter :points="tsneScatter" @select="handleTypeSelect" />
+            <TypeBump :dates="typeTimeline.dates" :series="typeTimeline.series" />
           </div>
           <div class="pane">
-            <TypeBump :dates="typeTimeline.dates" :series="typeTimeline.series" />
+            <CityTypeRibbon
+              :dates="cityTypeRibbon.dates"
+              :series="cityTypeRibbon.series"
+              :type-order="cityTypeRibbon.typeOrder"
+              :province="selectedRegion"
+            />
           </div>
         </section>
 
@@ -188,20 +213,14 @@
           <div class="pane">
             <WindCompass :data="windRose" />
           </div>
-          <div class="pane wind-summary">
-            <div class="summary-row">
-              <div class="label">最强方向</div>
-              <div class="value">{{ windSummary.maxDir }}</div>
-            </div>
-            <div class="summary-row">
-              <div class="label">最强风速</div>
-              <div class="value">{{ windSummary.maxVal }} m/s</div>
-            </div>
-            <div class="summary-row">
-              <div class="label">平均风速</div>
-              <div class="value">{{ windSummary.avg }} m/s</div>
-            </div>
-            <p class="muted note">基于当日 u / v 计算的 8 向均值</p>
+          <div class="pane">
+            <TypeScatter :points="tsneScatter" @select="handleTypeSelect" />
+          </div>
+        </section>
+
+        <section class="layout single">
+          <div class="pane">
+            <PollutantRingGrid :items="ringGrid" :metric="metric" />
           </div>
         </section>
       </template>
@@ -251,6 +270,9 @@ import MonthlyRing from "./components/MonthlyRing.vue";
 import AQIRain from "./components/AQIRain.vue";
 import AQICompareLine from "./components/AQICompareLine.vue";
 import WindCompass from "./components/WindCompass.vue";
+import PollutantRingGrid from "./components/PollutantRingGrid.vue";
+import CityStackedPie from "./components/CityStackedPie.vue";
+import CityTypeRibbon from "./components/CityTypeRibbon.vue";
 import {
   classifyLevels,
   computeRadialVector,
@@ -275,6 +297,9 @@ import {
   buildFeatureScatterTSNE,
   computeWindRose,
   buildWindFlow,
+  computeMonthlyRingGrid,
+  computeCityMonthStats,
+  computeCityTypeTrajectory,
 } from "./utils/dataLoader";
 
 const granularity = ref("day");
@@ -372,6 +397,41 @@ const corrMatrix = computed(() =>
 const aqiRanking = computed(() =>
   computeAQIRanking(dayData.value, "province", 15)
 );
+const ringGrid = computed(() =>
+  computeMonthlyRingGrid(
+    allDays.value,
+    metric.value,
+    aqiRanking.value.map((i) => i.name),
+    12
+  )
+);
+const currentMonth = computed(() => Number((currentDate.value || "2013-01-01").split("-")[1]));
+const selectedCity = computed(() => selectedRegion.value || aqiRanking.value[0]?.name || "");
+const cityMonthStats = computed(() =>
+  computeCityMonthStats(allDays.value, selectedCity.value, currentMonth.value)
+);
+const cityDayValues = computed(() => {
+  if (!selectedCity.value && !dayData.value.length) return {};
+  const target = normalizeProvince(selectedCity.value) || normalizeProvince(dayData.value[0]?.city) || "";
+  const row =
+    dayData.value.find(
+      (r) =>
+        normalizeProvince(r.city) === target ||
+        normalizeProvince(r.province) === target
+    ) || dayData.value[0] || {};
+  return {
+    pm25: row.pm25,
+    pm10: row.pm10,
+    so2: row.so2,
+    no2: row.no2,
+    co: row.co,
+    o3: row.o3,
+  };
+});
+
+const cityTypeRibbon = computed(() =>
+  computeCityTypeTrajectory(allDays.value, selectedRegion.value || null, currentMonth.value)
+);
 
 const parallelRows = computed(() =>
   buildParallelData(
@@ -419,6 +479,15 @@ const windVectors = computed(() =>
 const windFlow = computed(() =>
   regionIndex.value && mapMode.value === "weather" && weatherMetric.value === "wind"
     ? buildWindFlow(dayData.value, regionIndex.value, 0.35, 4)
+    : []
+);
+const heatmapPoints = computed(() =>
+  mapMode.value === "pollution" && regionIndex.value
+    ? rowsToScatter(dayData.value, metric.value, regionIndex.value).map((d) => [
+        d.coord[0],
+        d.coord[1],
+        d.value,
+      ])
     : []
 );
 
@@ -682,6 +751,10 @@ h1 {
 
 .secondary {
   grid-template-columns: 1fr 1fr;
+}
+
+.single {
+  grid-template-columns: 1fr;
 }
 
 .tertiary {

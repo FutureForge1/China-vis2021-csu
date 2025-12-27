@@ -59,15 +59,16 @@ const option = computed(() => {
     series: [
       {
         type: "scatter",
-        symbolSize: (p) => 30 + Math.sqrt(p[2] || 0) * 30,
+        symbolSize: (p) => 10 + Math.sqrt(p[2] || 0) * 15, // 缩小点大小
         data,
         itemStyle: {
           color: (p) => {
             const d = data[p.dataIndex];
             return palette[d.type] || "#9ca3af";
           },
-          opacity: 0.9,
+          opacity: 0.82,
         },
+        emphasis: { focus: "self", itemStyle: { opacity: 1 } },
       },
     ],
   };

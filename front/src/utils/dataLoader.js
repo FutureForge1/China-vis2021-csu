@@ -790,6 +790,175 @@ export function computeMonthlyRing(dayEntries) {
   return out;
 }
 
+// Province-level monthly pollutant grid for ring view.
+export function computeMonthlyRingGrid(dayEntries, pollutant = "pm25", orderNames = [], topN = 12) {
+  const months = Array.from({ length: 12 }, (_, i) => i + 1);
+  const buckets = new Map();
+
+  for (const entry of dayEntries) {
+    const parts = parseDateParts(entry.date);
+    if (!parts) continue;
+    const month = parts.month;
+    for (const row of entry.data) {
+      const key = row?.province || row?.city;
+      if (!key) continue;
+      if (!buckets.has(key)) {
+        buckets.set(key, {
+          months: months.map(() => ({
+            sum: 0,
+            count: 0,
+            aqiSum: 0,
+            aqiCount: 0,
+          })),
+        });
+      }
+      const bucket = buckets.get(key).months[month - 1];
+      const val = Number(row?.[pollutant]);
+      if (Number.isFinite(val)) {
+        bucket.sum += val;
+        bucket.count += 1;
+      }
+      const { aqi } = computeAQI(row);
+      if (Number.isFinite(aqi)) {
+        bucket.aqiSum += aqi;
+        bucket.aqiCount += 1;
+      }
+    }
+  }
+
+  // Convert to averages
+  const result = [];
+  for (const [name, data] of buckets.entries()) {
+    const monthsData = data.months.map((m) => ({
+      value: m.count ? m.sum / m.count : 0,
+      aqi: m.aqiCount ? m.aqiSum / m.aqiCount : 0,
+    }));
+    const avgAqi =
+      monthsData.reduce((s, d) => s + (Number.isFinite(d.aqi) ? d.aqi : 0), 0) / monthsData.length;
+    result.push({ name, months: monthsData, avgAqi });
+  }
+
+  // Sort by orderNames first, otherwise by avgAqi desc
+  const orderMap = new Map(orderNames.map((n, i) => [n, i]));
+  result.sort((a, b) => {
+    const ia = orderMap.has(a.name) ? orderMap.get(a.name) : Infinity;
+    const ib = orderMap.has(b.name) ? orderMap.get(b.name) : Infinity;
+    if (ia !== ib) return ia - ib;
+    return (b.avgAqi || 0) - (a.avgAqi || 0);
+  });
+
+  const trimmed = result.slice(0, topN);
+  const globalMax = Math.max(
+    1,
+    ...trimmed.flatMap((r) => r.months.map((m) => Number(m.value) || 0))
+  );
+
+  return trimmed.map((r) => ({
+    name: r.name,
+    months: r.months.map((m, idx) => {
+      const segments = Math.max(
+        3,
+        Math.min(24, Math.round(((Number(m.value) || 0) / globalMax) * 20))
+      );
+      return {
+        month: months[idx],
+        value: Number((m.value || 0).toFixed(2)),
+        aqi: Number((m.aqi || 0).toFixed(1)),
+        segments,
+      };
+    }),
+  }));
+}
+
+// Per-city monthly stats for current month.
+export function computeCityMonthStats(dayEntries, cityName, monthFilter) {
+  const metrics = ["pm25", "pm10", "so2", "no2", "co", "o3"];
+  const agg = new Map(); // metric -> {sum,count,min,max}
+  const target = normalizeRegionName(cityName);
+  for (const m of metrics) {
+    agg.set(m, { sum: 0, count: 0, min: Infinity, max: -Infinity });
+  }
+
+  for (const entry of dayEntries) {
+    const parts = parseDateParts(entry.date);
+    if (!parts || (monthFilter && parts.month !== monthFilter)) continue;
+    for (const row of entry.data) {
+      const name = normalizeRegionName(row.city) || normalizeRegionName(row.province);
+      if (!name) continue;
+      if (target && name !== target) continue;
+      for (const m of metrics) {
+        const v = Number(row?.[m]);
+        if (!Number.isFinite(v)) continue;
+        const a = agg.get(m);
+        a.sum += v;
+        a.count += 1;
+        a.min = Math.min(a.min, v);
+        a.max = Math.max(a.max, v);
+      }
+    }
+  }
+
+  const out = {};
+  for (const m of metrics) {
+    const a = agg.get(m);
+    if (!a.count) {
+      out[m] = { avg: 0, min: 0, max: 0 };
+    } else {
+      out[m] = {
+        avg: a.sum / a.count,
+        min: a.min,
+        max: a.max,
+      };
+    }
+  }
+  return out;
+}
+
+// City type trajectory within a month (per city, per day -> type index).
+export function computeCityTypeTrajectory(dayEntries, provinceFilter = null, monthFilter = null) {
+  const typeOrder = [
+    "偏燃烧型",
+    "偏钢铁型",
+    "偏机动车型",
+    "其他型",
+    "标准型",
+    "偏氮氧化型",
+    "偏二次型",
+    "偏沙尘型",
+  ];
+  const typeIndex = new Map(typeOrder.map((t, i) => [t, i]));
+  const dates = [];
+  const perCity = new Map(); // city -> values[]
+
+  for (const entry of dayEntries) {
+    const parts = parseDateParts(entry.date);
+    if (!parts || (monthFilter && parts.month !== monthFilter)) continue;
+    dates.push(entry.date);
+    const typed = computeTypeByRegion(
+      provinceFilter
+        ? entry.data.filter((r) => (r?.province || r?.city) === provinceFilter)
+        : entry.data,
+      "city"
+    );
+    const map = new Map(typed.map((t) => [normalizeRegionName(t.name), t.type]));
+    // ensure all seen cities align lengths
+    for (const name of map.keys()) {
+      if (!perCity.has(name)) perCity.set(name, []);
+    }
+    for (const [name, series] of perCity.entries()) {
+      const type = map.get(name);
+      const idx = typeIndex.has(type) ? typeIndex.get(type) : typeIndex.size;
+      series.push(idx ?? null);
+    }
+  }
+
+  const series = Array.from(perCity.entries()).map(([name, data]) => ({
+    name,
+    data,
+  }));
+  return { dates, typeOrder, series };
+}
+
 export function buildFeatureScatterTSNE(rows, field = "city") {
   const typed = computeTypeByRegion(rows, field);
   return typed.map((item) => {
