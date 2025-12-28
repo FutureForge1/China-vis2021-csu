@@ -30,6 +30,24 @@ OUTPUT_DIR = os.path.join(RESOURCE_DIR, 'output')
 # By default the BASE_PATH for raw zips is the raw directory under chosen RESOURCE_DIR
 BASE_PATH = RAW_DIR
 
+# 在 processing/src/config.py 中增加环境变量覆盖 BASE_PATH 的逻辑：优先读取 PREPROCESS_RAW_ROOT（回退读取 RAW_ROOT），如果路径存在则把 BASE_PATH 指向该目录；当 PREPROCESS_DEBUG=1 时输出简单提示
+# 修改 BASE_PATH 的逻辑
+_env_raw = os.environ.get('PREPROCESS_RAW_ROOT') or os.environ.get('RAW_ROOT')
+if _env_raw:
+    _env_raw = os.path.abspath(_env_raw)
+    if os.path.exists(_env_raw):
+        BASE_PATH = _env_raw
+        if os.environ.get('PREPROCESS_DEBUG', str(DEFAULT_PREPROCESS_DEBUG)) == '1':
+            print(f'[config] PREPROCESS_RAW_ROOT set, using BASE_PATH={BASE_PATH}')
+    else:
+        if os.environ.get('PREPROCESS_DEBUG', str(DEFAULT_PREPROCESS_DEBUG)) == '1':
+            print(f'[config] PREPROCESS_RAW_ROOT="{_env_raw}" not found, keeping BASE_PATH={BASE_PATH}')
+else:
+    # 如果没有设置环境变量，使用默认的 RAW_DIR/年份
+    BASE_PATH = RAW_DIR
+del _env_raw
+
+
 # 临时清理清单 placed at repository root (if available) so processing and root runners share it
 TMP_CLEANUP_MANIFEST = os.path.join(_repo_root, 'tmp_dirs_to_cleanup.json')
 
