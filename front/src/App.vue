@@ -14,12 +14,17 @@
             <RouterLink to="/types" :class="{ active: isTypes }">类型分析</RouterLink>
             <RouterLink to="/trends" :class="{ active: isTrends }">趋势对比</RouterLink>
           </nav>
+          <YearControls
+            :current-year="currentYear"
+            :available-years="availableYears"
+            @update:year="handleYearChange"
+          />
           <TimeControls
             :granularity="granularity"
             :metric="metric"
             :date-options="availableDates"
             :current-date="currentDate"
-            @update:granularity="granularity = $event"
+            @update:granularity="handleGranularityChange"
             @update:metric="metric = $event"
             @update:date="handleDateChange"
           />
@@ -59,7 +64,7 @@
               :heatmap="heatmapPoints"
               :selected-name="selectedRegion"
               @select="handleMapSelect"
-            />
+            />     
             <MapPanel
               v-else-if="mapMode === 'weather'"
               :data="weatherMapSeries"
@@ -245,6 +250,12 @@
           </div>
         </section>
       </template>
+
+      <template v-else-if="isWindDemo">
+        <div style="flex: 1; min-height: 0; position: relative;">
+          <RouterView />
+        </div>
+      </template>
     </div>
   </div>
 </template>
@@ -253,6 +264,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import TimeControls from "./components/TimeControls.vue";
+import YearControls from "./components/YearControls.vue";
 import MapPanel from "./components/MapPanel.vue";
 import ControlPanel from "./components/ControlPanel.vue";
 import TrendLine from "./components/TrendLine.vue";
@@ -300,6 +312,13 @@ import {
   computeMonthlyRingGrid,
   computeCityMonthStats,
   computeCityTypeTrajectory,
+  loadAvailableYears,
+  loadDataByGranularity,
+  getAvailableDatesByGranularity,
+  computeTrendSeriesByGranularity,
+  computeLevelTimelineByGranularity,
+  loadGridData,     // <--- 确保引入
+  gridToScatter,    // <--- 确保引入
 } from "./utils/dataLoader";
 
 const granularity = ref("day");
@@ -311,64 +330,69 @@ const allDays = ref([]);
 const route = useRoute();
 const router = useRouter();
 const regionIndex = ref(null);
+const gridData = ref([]);
+
+// 新增年份相关变量
+const currentYear = ref("2013");
+const availableYears = ref(["2013"]);
 
 function normalizeProvince(name) {
   if (!name) return "";
   let n = String(name).split("|").pop().trim();
 
+  // 【修正】完善映射表，包含全称作为 Key，防止被错误地处理成“北京省”
   const direct = {
-    北京: "北京市",
-    天津: "天津市",
-    上海: "上海市",
-    重庆: "重庆市",
-    "内蒙古自治区": "内蒙古自治区",
-    内蒙古: "内蒙古自治区",
-    "广西壮族自治区": "广西壮族自治区",
-    广西: "广西壮族自治区",
-    "新疆维吾尔自治区": "新疆维吾尔自治区",
-    新疆: "新疆维吾尔自治区",
-    "宁夏回族自治区": "宁夏回族自治区",
-    宁夏: "宁夏回族自治区",
-    "西藏自治区": "西藏自治区",
-    西藏: "西藏自治区",
-    "香港特别行政区": "香港特别行政区",
-    香港: "香港特别行政区",
-    "澳门特别行政区": "澳门特别行政区",
-    澳门: "澳门特别行政区",
-    "中国香港": "香港特别行政区",
-    "中國香港": "香港特别行政区",
-    "中国澳门": "澳门特别行政区",
-    "中國澳門": "澳门特别行政区",
-    "台湾省": "台湾省",
-    台湾: "台湾省",
-    "黑龙江省": "黑龙江省",
-    "黑龍江省": "黑龙江省",
+    "北京": "北京市", "北京市": "北京市",
+    "天津": "天津市", "天津市": "天津市",
+    "上海": "上海市", "上海市": "上海市",
+    "重庆": "重庆市", "重庆市": "重庆市",
+    
+    "内蒙古": "内蒙古自治区", "内蒙古自治区": "内蒙古自治区",
+    "广西": "广西壮族自治区", "广西壮族自治区": "广西壮族自治区",
+    "新疆": "新疆维吾尔自治区", "新疆维吾尔自治区": "新疆维吾尔自治区",
+    "宁夏": "宁夏回族自治区", "宁夏回族自治区": "宁夏回族自治区",
+    "西藏": "西藏自治区", "西藏自治区": "西藏自治区",
+    
+    "香港": "香港特别行政区", "香港特别行政区": "香港特别行政区", "中国香港": "香港特别行政区",
+    "澳门": "澳门特别行政区", "澳门特别行政区": "澳门特别行政区", "中国澳门": "澳门特别行政区",
+    
+    // 黑龙江如果不特殊处理，去掉“省”后加“省”没问题，但为了保险也加上
+    "黑龙江": "黑龙江省", "黑龙江省": "黑龙江省"
   };
+
   if (direct[n]) return direct[n];
 
-  // Strip common suffixes, then append “省”
+  // 对于普通省份（河北、河南等），去掉后缀再加“省”
   n = n.replace(/省|市|自治区|壮族自治区|维吾尔自治区|回族自治区|特别行政区/g, "").trim();
   if (!n) return "";
   return `${n}省`;
 }
 
-function aggregateMap(rows, metricName) {
+function aggregateMap(rows, metricName, granularity = "day") {
+  console.log(`[DataDebug] 聚合地图数据: metricName=${metricName}, granularity=${granularity}, rows.length=${rows.length}`);
   const sums = new Map();
   const counts = new Map();
   for (const row of rows) {
     const prov = normalizeProvince(row.province);
-    const val = Number(row[metricName] ?? 0);
+    // 使用新的字段适配逻辑
+    const actualField = granularity === "day" ? metricName :
+                       granularity === "month" ? `${metricName}_mean` :
+                       granularity === "year" ? `${metricName}_yearly_mean` : metricName;
+    const val = Number(row[actualField] ?? 0);
+    console.log(`[DataDebug] 聚合行: province=${row.province}, normalized=${prov}, field=${actualField}, value=${val}`);
     if (!prov || Number.isNaN(val)) continue;
     sums.set(prov, (sums.get(prov) || 0) + val);
     counts.set(prov, (counts.get(prov) || 0) + 1);
   }
-  return Array.from(sums.entries()).map(([prov, sum]) => ({
+  const result = Array.from(sums.entries()).map(([prov, sum]) => ({
     name: prov,
     value: sum / (counts.get(prov) || 1),
   }));
+  console.log(`[DataDebug] 聚合结果:`, result);
+  return result;
 }
 
-const mapSeries = computed(() => aggregateMap(dayData.value, metric.value));
+const mapSeries = computed(() => aggregateMap(dayData.value, metric.value, granularity.value));
 
 const levelStats = computed(() =>
   classifyLevels(dayData.value, metric.value)
@@ -377,13 +401,13 @@ const levelStats = computed(() =>
 const radialVector = computed(() => computeRadialVector(dayData.value));
 
 const trendSeries = computed(() =>
-  computeTrendSeries(allDays.value, metric.value)
+  computeTrendSeriesByGranularity(allDays.value, metric.value, granularity.value)
 );
 
 const trendDates = computed(() => allDays.value.map((item) => item.date));
 
 const levelTimeline = computed(() =>
-  computeLevelTimeline(allDays.value, metric.value)
+  computeLevelTimelineByGranularity(allDays.value, metric.value, granularity.value)
 );
 
 const corrMatrix = computed(() =>
@@ -411,6 +435,7 @@ const cityMonthStats = computed(() =>
   computeCityMonthStats(allDays.value, selectedCity.value, currentMonth.value)
 );
 const cityDayValues = computed(() => {
+  console.log(`[DataDebug] 计算城市日均值: selectedCity=${selectedCity.value}, granularity=${granularity.value}, data.length=${dayData.value.length}`);
   if (!selectedCity.value && !dayData.value.length) return {};
   const target = normalizeProvince(selectedCity.value) || normalizeProvince(dayData.value[0]?.city) || "";
   const row =
@@ -419,14 +444,28 @@ const cityDayValues = computed(() => {
         normalizeProvince(r.city) === target ||
         normalizeProvince(r.province) === target
     ) || dayData.value[0] || {};
-  return {
-    pm25: row.pm25,
-    pm10: row.pm10,
-    so2: row.so2,
-    no2: row.no2,
-    co: row.co,
-    o3: row.o3,
+
+  console.log(`[DataDebug] 找到的目标行:`, row);
+
+  // 根据粒度获取正确的字段
+  const getFieldValue = (field) => {
+    if (granularity.value === "day") return row[field];
+    if (granularity.value === "month") return row[`${field}_mean`];
+    if (granularity.value === "year") return row[`${field}_yearly_mean`];
+    return row[field];
   };
+
+  const result = {
+    pm25: getFieldValue("pm25"),
+    pm10: getFieldValue("pm10"),
+    so2: getFieldValue("so2"),
+    no2: getFieldValue("no2"),
+    co: getFieldValue("co"),
+    o3: getFieldValue("o3"),
+  };
+
+  console.log(`[DataDebug] 城市日均值结果:`, result);
+  return result;
 });
 
 const cityTypeRibbon = computed(() =>
@@ -455,13 +494,22 @@ const typeScatter = computed(() => buildTypeScatter(dayData.value, "city"));
 const typeTimeline = computed(() => computeTypeTimeline(allDays.value, "city", selectedRegion.value || null));
 
 const weatherMetric = ref("wind");
-const weatherMapSeries = computed(() => aggregateMap(dayData.value, weatherMetric.value));
+const weatherMapSeries = computed(() => aggregateMap(dayData.value, weatherMetric.value, granularity.value));
 const weatherMetricLabel = computed(() => {
   const map = { wind: "风速", temp: "气温", rh: "湿度", psfc: "气压" };
   return map[weatherMetric.value] || weatherMetric.value.toUpperCase();
 });
 
 const scatterPoints = computed(() => {
+  // 如果有网格数据，优先使用网格数据进行渲染
+  if (gridData.value && gridData.value.length > 0) {
+    const targetMetric = mapMode.value === "weather" ? weatherMetric.value : metric.value;
+    // 如果是风速模式，通常不画散点，画箭头；但如果想看风速点也可以保留
+    if (mapMode.value === "weather" && weatherMetric.value === "wind") return []; 
+    return gridToScatter(gridData.value, targetMetric);
+  }
+
+  // 降级回退到城市数据 (旧逻辑)
   if (!regionIndex.value) return [];
   if (mapMode.value === "weather" && weatherMetric.value === "wind") return [];
   return rowsToScatter(
@@ -471,25 +519,49 @@ const scatterPoints = computed(() => {
   );
 });
 
-const windVectors = computed(() =>
-  regionIndex.value && mapMode.value === "weather" && weatherMetric.value === "wind"
-    ? buildWindVectors(dayData.value, regionIndex.value, 0.3)
-    : []
-);
-const windFlow = computed(() =>
-  regionIndex.value && mapMode.value === "weather" && weatherMetric.value === "wind"
-    ? buildWindFlow(dayData.value, regionIndex.value, 0.35, 4)
-    : []
-);
-const heatmapPoints = computed(() =>
-  mapMode.value === "pollution" && regionIndex.value
-    ? rowsToScatter(dayData.value, metric.value, regionIndex.value).map((d) => [
+// 风场箭头 (Wind Vectors)
+const windVectors = computed(() => {
+  if (mapMode.value === "weather" && weatherMetric.value === "wind") {
+    // 优先使用网格数据
+    const source = (gridData.value && gridData.value.length > 0) ? gridData.value : dayData.value;
+    const index = (gridData.value && gridData.value.length > 0) ? null : regionIndex.value; // 网格数据不需要 index
+    return buildWindVectors(source, index, 0.3);
+  }
+  return [];
+});
+
+// 风场流线 (Wind Flow)
+const windFlow = computed(() => {
+  if (mapMode.value === "weather" && weatherMetric.value === "wind") {
+    // 优先使用网格数据
+    const source = (gridData.value && gridData.value.length > 0) ? gridData.value : dayData.value;
+    const index = (gridData.value && gridData.value.length > 0) ? null : regionIndex.value;
+    // 网格数据较密，流线密度参数(density)可以适当调低，这里设为 1 或 2
+    return buildWindFlow(source, index, 0.35, 2);
+  }
+  return [];
+});
+
+// 热力图数据 (Heatmap)
+const heatmapPoints = computed(() => {
+  if (mapMode.value === "pollution") {
+    // 优先使用网格数据
+    if (gridData.value && gridData.value.length > 0) {
+      // 复用 gridToScatter 逻辑并转换格式 [lon, lat, value]
+      return gridToScatter(gridData.value, metric.value).map(p => [p.coord[0], p.coord[1], p.value]);
+    }
+    
+    // 回退旧逻辑
+    if (regionIndex.value) {
+      return rowsToScatter(dayData.value, metric.value, regionIndex.value).map((d) => [
         d.coord[0],
         d.coord[1],
         d.value,
-      ])
-    : []
-);
+      ]);
+    }
+  }
+  return [];
+});
 
 const yearlyRings = computed(() => computeYearlyRadial(allDays.value));
 const monthlyRings = computed(() => computeMonthlyRing(allDays.value));
@@ -519,6 +591,8 @@ const isOverview = computed(() => route.name === "overview");
 const isStory = computed(() => route.name === "story");
 const isTypes = computed(() => route.name === "types");
 const isTrends = computed(() => route.name === "trends");
+// 在 script setup 中找到定义 isOverview 等变量的地方，添加一行：
+const isWindDemo = computed(() => route.name === "wind-demo");
 
 const storyIndex = ref(0);
 const storyRunning = ref(true);
@@ -543,32 +617,101 @@ const storyMood = computed(() => {
 });
 
 async function bootstrap() {
-  const index = await loadIndex();
-  availableDates.value = index.days;
-  currentDate.value = index.days[0] || "2013-01-01";
-
-  // Preload all days for the trend line if the index is present.
-  const loadedAll = [];
-  for (const day of index.days) {
-    const data = await loadOneDay(day);
-    if (data.length) {
-      loadedAll.push({ date: day, data });
-    }
+  // 加载可用年份
+  const years = await loadAvailableYears();
+  availableYears.value = years;
+  if (!years.includes(currentYear.value)) {
+    currentYear.value = years[0] || "2013";
   }
-  allDays.value = loadedAll;
 
-  const first = await loadOneDay(currentDate.value);
-  dayData.value = first;
+  // 加载当前年份的数据
+  await loadDataForCurrentGranularity();
 
   regionIndex.value = await loadRegionIndex();
 
   startStoryLoop();
 }
 
+// 加载当前粒度的数据
+async function loadDataForCurrentGranularity() {
+  try {
+    // 获取当前粒度的可用日期
+    const dates = await getAvailableDatesByGranularity(granularity.value, currentYear.value);
+    availableDates.value = dates;
+
+    // 设置默认日期
+    if (!currentDate.value || !dates.includes(currentDate.value)) {
+      currentDate.value = dates[0] || `${currentYear.value}-01-01`;
+    }
+
+    // 加载当前日期的数据
+    if (granularity.value === "day") {
+      const data = await loadDataByGranularity("day", currentYear.value, currentDate.value);
+      dayData.value = data;
+
+      // (2) 【新增】并发加载网格数据 (用于地图展示)
+      // 注意：网格数据量大，加载可能稍慢
+      console.log(`[App] Loading grid data for ${currentDate.value}...`);
+      const grid = await loadGridData(currentDate.value);
+      gridData.value = grid; // 保存网格数据
+
+      // 预加载所有天的数据用于趋势线
+      const loadedAll = [];
+      for (const day of dates) {
+        const dayData = await loadDataByGranularity("day", currentYear.value, day);
+        if (dayData.length) {
+          loadedAll.push({ date: day, data: dayData });
+        }
+      }
+      allDays.value = loadedAll;
+    } else {
+      // 非日粒度时，清空网格数据 (假设目前只有日粒度有网格)
+      gridData.value = [];
+      // 对于月度和年度数据，直接加载当前选择的数据
+      const data = await loadDataByGranularity(granularity.value, currentYear.value, currentDate.value);
+      dayData.value = data;
+
+      // 对于月度，加载全年所有月份用于趋势
+      if (granularity.value === "month") {
+        const loadedAll = [];
+        for (const month of dates) {
+          const monthData = await loadDataByGranularity("month", currentYear.value, month);
+          if (monthData.length) {
+            loadedAll.push({ date: month, data: monthData });
+          }
+        }
+        allDays.value = loadedAll;
+      } else {
+        // 年粒度只有一个数据点
+        allDays.value = [{ date: currentYear.value, data }];
+      }
+    }
+  } catch (error) {
+    console.error("Failed to load data:", error);
+    dayData.value = [];
+    allDays.value = [];
+  }
+}
+
 async function handleDateChange(value) {
   currentDate.value = value;
-  const data = await loadOneDay(value);
-  dayData.value = data;
+  if (granularity.value === "day") {
+    const data = await loadDataByGranularity("day", currentYear.value, value);
+    dayData.value = data;
+  } else {
+    // 对于月度和年度，直接重新加载
+    await loadDataForCurrentGranularity();
+  }
+}
+
+async function handleYearChange(value) {
+  currentYear.value = value;
+  await loadDataForCurrentGranularity();
+}
+
+async function handleGranularityChange(value) {
+  granularity.value = value;
+  await loadDataForCurrentGranularity();
 }
 
 function handleRankingSelect(name) {

@@ -4,8 +4,8 @@
       <label>粒度</label>
       <select :value="granularity" @change="$emit('update:granularity', $event.target.value)">
         <option value="day">日</option>
-        <option value="month" disabled>月（待扩展）</option>
-        <option value="year" disabled>年（待扩展）</option>
+        <option value="month">月</option>
+        <option value="year">年</option>
       </select>
     </div>
     <div class="field">

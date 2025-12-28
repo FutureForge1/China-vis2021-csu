@@ -33,7 +33,8 @@ const emit = defineEmits(["select"]);
 
 const mapReady = ref(false);
 
-const chartOption = computed(() => {
+// 将数据相关的计算分离，避免地图拖拽时重新计算
+const dataStats = computed(() => {
   const useScatter = props.scatter.length > 0;
   const useWind = props.wind.length > 0;
   const useFlow = props.flow.length > 0;
@@ -54,20 +55,33 @@ const chartOption = computed(() => {
       ? ["#c7d2fe", "#93c5fd", "#60a5fa", "#3b82f6", "#1d4ed8"]
       : ["#4ade80", "#facc15", "#f97316", "#ef4444"];
 
+  return { min, max, palette, useScatter, useWind, useFlow, useHeatmap };
+});
+
+// 基础地图配置，包含拖拽等设置
+const baseGeoConfig = {
+  map: "china",
+  roam: true,
+  emphasis: { label: { show: false } },
+  silent: true, // 禁用所有交互事件
+};
+
+const chartOption = computed(() => {
+  const { min, max, palette, useScatter, useWind, useFlow, useHeatmap } = dataStats.value;
+
   return {
     backgroundColor: "transparent",
+    // 完全禁用所有悬停和交互
     tooltip: {
-      trigger: "item",
-      formatter: (p) =>
-        `${p.name}<br/>${props.metric.toUpperCase()}: ${p.value ?? "-"}`,
+      show: false,
     },
+    // 禁用悬停高亮
+    hoverLayerThreshold: Infinity,
+
     geo: useScatter || useWind || useFlow || useHeatmap
-      ? {
-          map: "china",
-          roam: true,
-          emphasis: { label: { show: false } },
-        }
+      ? baseGeoConfig
       : undefined,
+
     visualMap: useWind || useFlow
       ? undefined
       : useHeatmap
@@ -90,6 +104,7 @@ const chartOption = computed(() => {
             color: palette,
           },
         },
+
     series: [
       useScatter
         ? {
@@ -108,6 +123,12 @@ const chartOption = computed(() => {
             },
             encode: { value: 2 },
             itemStyle: { color: palette[palette.length - 1], opacity: 0.7 },
+            // 禁用悬停高亮
+            emphasis: { focus: 'none' },
+            silent: true, // 禁用鼠标事件
+            // 移除large模式，使用progressive渲染优化大数据
+            progressive: 1000, // 每帧渲染1000个点
+            progressiveThreshold: 10000, // 当数据点超过1万个时启用progressive渲染
           }
         : useHeatmap
         ? {
@@ -117,17 +138,26 @@ const chartOption = computed(() => {
             data: props.heatmap,
             pointSize: 10,
             blurSize: 25,
+            // 禁用悬停高亮
+            emphasis: { focus: 'none' },
+            silent: true, // 禁用鼠标事件
+            large: true, // 启用大数据量优化
+            largeThreshold: 2000,
           }
         : {
             name: props.metric,
             type: "map",
             map: "china",
             roam: true,
-            emphasis: { label: { show: false } },
+            emphasis: { label: { show: false }, focus: 'none' },
             data: props.data,
             selectedMode: "single",
             selected: props.selectedName ? { [props.selectedName]: true } : {},
+            silent: true, // 禁用鼠标事件，除了选择
+            large: true,
+            largeThreshold: 2000,
           },
+
       ...(props.wind && props.wind.length
         ? [
             {
@@ -154,9 +184,13 @@ const chartOption = computed(() => {
               blendMode: "lighter",
               zlevel: 3,
               large: true,
+              largeThreshold: 2000,
+              emphasis: { focus: 'none' },
+              silent: true,
             },
           ]
         : []),
+
       ...(props.flow && props.flow.length
         ? [
             {
@@ -183,6 +217,9 @@ const chartOption = computed(() => {
               blendMode: "lighter",
               zlevel: 2,
               large: true,
+              largeThreshold: 2000,
+              emphasis: { focus: 'none' },
+              silent: true,
             },
           ]
         : []),
@@ -194,19 +231,27 @@ const chartOption = computed(() => {
 const MAP_PATHS = [
   "/china.json",
   "/data/china.json",
+  // local pretty-printed geojson (provided by user)
+  "/中国_市.pretty.json",
   "https://geo.datav.aliyun.com/areas_v3/bound/100000_full.json",
 ];
 
 async function loadMap() {
+  console.log('[MapPanel] loadMap: trying MAP_PATHS', MAP_PATHS);
   for (const path of MAP_PATHS) {
     try {
+      console.log('[MapPanel] loadMap: fetch', path);
       const res = await fetch(path);
+      console.log('[MapPanel] loadMap: fetched', path, 'ok=', res.ok, 'status=', res.status);
       if (!res.ok) continue;
       const geo = await res.json();
+      console.log('[MapPanel] loadMap: registerMap from', path);
       registerMap("china", geo);
       mapReady.value = true;
+      console.log('[MapPanel] loadMap: registerMap success');
       return;
     } catch (err) {
+      console.warn('[MapPanel] loadMap: failed to load', path, err);
       // try next path
     }
   }
