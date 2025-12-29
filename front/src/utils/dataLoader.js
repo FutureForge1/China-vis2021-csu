@@ -438,7 +438,7 @@ export function buildWindVectors(rows, regionIndex, scale = 0.04) {
   const lines = [];
 
   // 全局固定采样步长：每隔 8 条取一条
-  const step = 8000;
+  const step = 4;
 
   for (let i = 0; i < rows.length; i += step) {
     const row = rows[i];

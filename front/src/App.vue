@@ -519,7 +519,7 @@ const windVectors = computed(() => {
     // 优先使用网格数据
     const source = (gridData.value && gridData.value.length > 0) ? gridData.value : dayData.value;
     const index = (gridData.value && gridData.value.length > 0) ? null : regionIndex.value; // 网格数据不需要 index
-    return buildWindVectors(source, index, 0.3);
+    return buildWindVectors(source, index, 0.10);
   }
   return [];
 });
