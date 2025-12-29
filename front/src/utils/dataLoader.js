@@ -376,61 +376,106 @@ export function rowsToScatter(rows, metricKey, regionIndex) {
 
 // Densified stream-like lines for a "flow" layer (adds jittered seeds to thicken the effect).
 
+// export function buildWindVectors(rows, regionIndex, scale = 0.04) {
+//   const lines = [];
+  
+//   // 优化策略：
+//   // 1. 如果数据量大于 2000 (通常是网格数据)，则启用采样 (step > 1)
+//   // 2. 网格数据很密，scale (线段长度系数) 需要设小一点，防止线段互相打架
+//   const isLargeDataset = rows.length > 2000;
+  
+//   // 采样步长：如果是大数据，每 8 个点取 1 个；否则全量渲染
+//   const step = isLargeDataset ? 8 : 1; 
+  
+//   // 线条长度缩放：大数据时缩短一点
+//   const finalScale = isLargeDataset ? 0.06 : 0.3;
+
+//   // 使用步长循环
+//   for (let i = 0; i < rows.length; i += step) {
+//     const row = rows[i];
+    
+//     let coord = null;
+
+//     // 1. 优先尝试直接读取经纬度 (网格数据)
+//     const lat = Number(row.lat || row.latitude);
+//     const lon = Number(row.lon || row.longitude);
+//     if (Number.isFinite(lat) && Number.isFinite(lon)) {
+//       coord = { lon, lat };
+//     } 
+//     // 2. 查表 (站点/城市数据)
+//     else if (regionIndex) {
+//       const name = normalizeRegionName(row.city) || normalizeRegionName(row.county) || normalizeRegionName(row.province);
+//       coord = name ? regionIndex.get(name) : null;
+//     }
+
+//     const u = Number(row?.u);
+//     const v = Number(row?.v);
+    
+//     if (!coord || !Number.isFinite(u) || !Number.isFinite(v)) continue;
+    
+//     const speed = Math.sqrt(u * u + v * v);
+    
+//     // 忽略极小的风速，减少噪点
+//     if (speed < 0.5) continue;
+
+//     // 计算线段终点
+//     const dx = u * finalScale;
+//     const dy = v * finalScale;
+    
+//     lines.push({
+//       coords: [
+//         [coord.lon, coord.lat],          // 起点
+//         [coord.lon + dx, coord.lat + dy] // 终点
+//       ],
+//       // 将速度值赋给 value，让 ECharts visualMap 自动处理颜色
+//       value: speed, 
+//     });
+//   }
+//   return lines;
+// }
+
 export function buildWindVectors(rows, regionIndex, scale = 0.04) {
   const lines = [];
-  
-  // 优化策略：
-  // 1. 如果数据量大于 2000 (通常是网格数据)，则启用采样 (step > 1)
-  // 2. 网格数据很密，scale (线段长度系数) 需要设小一点，防止线段互相打架
-  const isLargeDataset = rows.length > 2000;
-  
-  // 采样步长：如果是大数据，每 8 个点取 1 个；否则全量渲染
-  const step = isLargeDataset ? 8 : 1; 
-  
-  // 线条长度缩放：大数据时缩短一点
-  const finalScale = isLargeDataset ? 0.06 : 0.3;
 
-  // 使用步长循环
+  // 全局固定采样步长：每隔 8 条取一条
+  const step = 8000;
+
   for (let i = 0; i < rows.length; i += step) {
     const row = rows[i];
-    
-    let coord = null;
 
-    // 1. 优先尝试直接读取经纬度 (网格数据)
+    // 获取经纬度或通过索引匹配
+    let coord = null;
     const lat = Number(row.lat || row.latitude);
     const lon = Number(row.lon || row.longitude);
     if (Number.isFinite(lat) && Number.isFinite(lon)) {
       coord = { lon, lat };
-    } 
-    // 2. 查表 (站点/城市数据)
-    else if (regionIndex) {
+    } else if (regionIndex) {
       const name = normalizeRegionName(row.city) || normalizeRegionName(row.county) || normalizeRegionName(row.province);
       coord = name ? regionIndex.get(name) : null;
     }
 
     const u = Number(row?.u);
     const v = Number(row?.v);
-    
     if (!coord || !Number.isFinite(u) || !Number.isFinite(v)) continue;
-    
-    const speed = Math.sqrt(u * u + v * v);
-    
-    // 忽略极小的风速，减少噪点
-    if (speed < 0.5) continue;
 
-    // 计算线段终点
-    const dx = u * finalScale;
-    const dy = v * finalScale;
-    
+    const speed = Math.sqrt(u * u + v * v);
+    if (speed <= 0) continue;
+
+    // 使用角度和速度决定线段方向与长度：length = speed * scale
+    const angle = Math.atan2(v, u);
+    const length = speed * (Number.isFinite(scale) ? scale : 0.04);
+    const dx = Math.cos(angle) * length;
+    const dy = Math.sin(angle) * length;
+
     lines.push({
       coords: [
-        [coord.lon, coord.lat],          // 起点
-        [coord.lon + dx, coord.lat + dy] // 终点
+        [coord.lon, coord.lat],
+        [coord.lon + dx, coord.lat + dy],
       ],
-      // 将速度值赋给 value，让 ECharts visualMap 自动处理颜色
-      value: speed, 
+      value: speed, // 传入速度值，用于颜色深度映射
     });
   }
+
   return lines;
 }
 

@@ -1,5 +1,4 @@
 import { createRouter, createWebHistory } from "vue-router";
-import WindDemo from './views/WindDemo.vue';
 
 const EmptyView = { template: "<div></div>" };
 
@@ -9,7 +8,6 @@ const routes = [
   { path: "/story", name: "story", component: EmptyView },
   { path: "/types", name: "types", component: EmptyView },
   { path: "/trends", name: "trends", component: EmptyView },
-  { path: "/wind-demo", name: "wind-demo", component: WindDemo },
 ];
 
 const router = createRouter({

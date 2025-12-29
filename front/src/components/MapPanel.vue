@@ -58,6 +58,23 @@ const dataStats = computed(() => {
   return { min, max, palette, useScatter, useWind, useFlow, useHeatmap };
 });
 
+// 风速颜色映射函数
+// 风速颜色映射函数（统一红色系，速度越大颜色越深）
+const getWindSpeedColor = (speed, minSpeed, maxSpeed) => {
+  if (maxSpeed === minSpeed) return "#b91c1c";
+  const normalized = Math.max(0, Math.min(1, (speed - minSpeed) / (maxSpeed - minSpeed)));
+  const colors = ["#fee2e2", "#fecaca", "#fca5a5", "#f87171", "#ef4444", "#dc2626", "#b91c1c"];
+  const index = Math.floor(normalized * (colors.length - 1));
+  return colors[Math.min(index, colors.length - 1)];
+};
+
+// 风速线段宽度映射函数
+const getWindSpeedWidth = (speed, minSpeed, maxSpeed) => {
+  if (maxSpeed === minSpeed) return 1;
+  const normalized = (speed - minSpeed) / (maxSpeed - minSpeed);
+  return 0.5 + normalized * 2; // 宽度从0.5到2.5
+};
+
 // 基础地图配置，包含拖拽等设置
 const baseGeoConfig = {
   map: "china",
@@ -141,8 +158,9 @@ const chartOption = computed(() => {
             // 禁用悬停高亮
             emphasis: { focus: 'none' },
             silent: true, // 禁用鼠标事件
-            large: true, // 启用大数据量优化
-            largeThreshold: 2000,
+            // 移除large模式，使用progressive渲染优化大数据
+            progressive: 2000, // heatmap可以设置更高的progressive值
+            progressiveThreshold: 5000,
           }
         : {
             name: props.metric,
@@ -154,8 +172,10 @@ const chartOption = computed(() => {
             selectedMode: "single",
             selected: props.selectedName ? { [props.selectedName]: true } : {},
             silent: true, // 禁用鼠标事件，除了选择
-            large: true,
-            largeThreshold: 2000,
+            // 在气象模式下不需要用颜色填充行政区，保持透明以突出风廓线
+            itemStyle: props.mode === "weather"
+              ? { areaColor: "transparent", borderColor: "#9eb1c7", borderWidth: 0.6 }
+              : {},
           },
 
       ...(props.wind && props.wind.length
@@ -165,26 +185,29 @@ const chartOption = computed(() => {
               coordinateSystem: "geo",
               data: props.wind.map((w) => ({
                 coords: w.coords,
-                value: w.speed,
+                value: w.value ?? w.speed ?? 0,
               })),
-              lineStyle: {
-                color: "#3b82f6",
-                width: 1,
-                opacity: 0.45,
-                cap: "round",
+              lineStyle: (params) => {
+                const windSpeed = params.value || 0;
+                const { min, max } = dataStats.value;
+                return {
+                  color: getWindSpeedColor(windSpeed, min, max),
+                  width: getWindSpeedWidth(windSpeed, min, max),
+                  opacity: 0.9,
+                  cap: "round",
+                };
               },
-              effect: {
-                show: true,
-                symbol: "arrow",
-                symbolSize: 5,
-                color: "#2563eb",
-                trailLength: 0.5,
-                constantSpeed: 20,
-              },
-              blendMode: "lighter",
+              // 移除箭头效果，改为纯线段
+              // effect: {
+              //   show: true,
+              //   symbol: "arrow",
+              //   symbolSize: 5,
+              //   color: "#2563eb",
+              //   trailLength: 0.5,
+              //   constantSpeed: 20,
+              // },
+              blendMode: "normal",
               zlevel: 3,
-              large: true,
-              largeThreshold: 2000,
               emphasis: { focus: 'none' },
               silent: true,
             },
@@ -198,14 +221,19 @@ const chartOption = computed(() => {
               coordinateSystem: "geo",
               data: props.flow.map((w) => ({
                 coords: w.coords,
-                value: w.speed,
+                value: w.value ?? w.speed ?? 0,
               })),
               polyline: false,
-              lineStyle: {
-                color: "#60a5fa",
-                width: 0.8,
-                opacity: 0.35,
-                curveness: 0.05,
+              // flow 使用与风速一致的配色，但透明度更低，放在较低 zlevel，避免和主线产生强烈颜色混合
+              lineStyle: (params) => {
+                const speed = params.value || 0;
+                const { min, max } = dataStats.value;
+                return {
+                  color: getWindSpeedColor(speed, min, max),
+                  width: 0.6,
+                  opacity: 0.28,
+                  curveness: 0.05,
+                };
               },
               effect: {
                 show: true,
@@ -215,9 +243,7 @@ const chartOption = computed(() => {
                 color: "#93c5fd",
               },
               blendMode: "lighter",
-              zlevel: 2,
-              large: true,
-              largeThreshold: 2000,
+              zlevel: 1,
               emphasis: { focus: 'none' },
               silent: true,
             },

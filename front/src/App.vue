@@ -250,12 +250,6 @@
           </div>
         </section>
       </template>
-
-      <template v-else-if="isWindDemo">
-        <div style="flex: 1; min-height: 0; position: relative;">
-          <RouterView />
-        </div>
-      </template>
     </div>
   </div>
 </template>
@@ -591,8 +585,6 @@ const isOverview = computed(() => route.name === "overview");
 const isStory = computed(() => route.name === "story");
 const isTypes = computed(() => route.name === "types");
 const isTrends = computed(() => route.name === "trends");
-// 在 script setup 中找到定义 isOverview 等变量的地方，添加一行：
-const isWindDemo = computed(() => route.name === "wind-demo");
 
 const storyIndex = ref(0);
 const storyRunning = ref(true);
