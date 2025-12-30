@@ -14,12 +14,19 @@
             <RouterLink to="/types" :class="{ active: isTypes }">类型分析</RouterLink>
             <RouterLink to="/trends" :class="{ active: isTrends }">趋势对比</RouterLink>
           </nav>
+          <div class="view-controls">
+            <div class="view-toggle">
+              <button :class="{ active: viewMode === 'daily' }" @click="viewMode = 'daily'">日均视图</button>
+              <button :class="{ active: viewMode === 'monthly' }" @click="viewMode = 'monthly'">月份视图</button>
+            </div>
+          </div>
           <YearControls
             :current-year="currentYear"
             :available-years="availableYears"
             @update:year="handleYearChange"
           />
           <TimeControls
+            v-if="viewMode === 'daily'"
             :granularity="granularity"
             :metric="metric"
             :date-options="availableDates"
@@ -32,110 +39,125 @@
       </header>
 
       <template v-if="isOverview">
-        <ControlPanel
-          class="pane"
-          :date="currentDate"
-          :region="selectedRegion || '全国'"
-          :rows="dayData"
-          :metric="metric"
-          :map-mode="mapMode"
-          @select-metric="metric = $event"
-          @toggle-map-mode="mapMode = $event"
-        />
-        <section class="layout">
-          <div class="pane map-pane">
-            <div class="map-switch">
-              <button :class="{ active: mapMode === 'pollution' }" @click="mapMode = 'pollution'">污染</button>
-              <button :class="{ active: mapMode === 'weather' }" @click="mapMode = 'weather'">气象</button>
-              <button :class="{ active: mapMode === 'type' }" @click="mapMode = 'type'">类型</button>
-              <div v-if="mapMode === 'weather'" class="weather-toggle">
-                <button :class="{ active: weatherMetric === 'wind' }" @click="weatherMetric = 'wind'">风速</button>
-                <button :class="{ active: weatherMetric === 'temp' }" @click="weatherMetric = 'temp'">气温</button>
-                <button :class="{ active: weatherMetric === 'rh' }" @click="weatherMetric = 'rh'">湿度</button>
-                <button :class="{ active: weatherMetric === 'psfc' }" @click="weatherMetric = 'psfc'">气压</button>
+        <!-- 日均视图 -->
+        <template v-if="viewMode === 'daily'">
+          <ControlPanel
+            class="pane"
+            :date="currentDate"
+            :region="selectedRegion || '全国'"
+            :rows="dayData"
+            :metric="metric"
+            :map-mode="mapMode"
+            @select-metric="metric = $event"
+            @toggle-map-mode="mapMode = $event"
+          />
+          <section class="layout">
+            <div class="pane map-pane">
+              <div class="map-switch">
+                <button :class="{ active: mapMode === 'pollution' }" @click="mapMode = 'pollution'">污染</button>
+                <button :class="{ active: mapMode === 'weather' }" @click="mapMode = 'weather'">气象</button>
+                <button :class="{ active: mapMode === 'type' }" @click="mapMode = 'type'">类型</button>
+                <div v-if="mapMode === 'weather'" class="weather-toggle">
+                  <button :class="{ active: weatherMetric === 'wind' }" @click="weatherMetric = 'wind'">风速</button>
+                  <button :class="{ active: weatherMetric === 'temp' }" @click="weatherMetric = 'temp'">气温</button>
+                  <button :class="{ active: weatherMetric === 'rh' }" @click="weatherMetric = 'rh'">湿度</button>
+                  <button :class="{ active: weatherMetric === 'psfc' }" @click="weatherMetric = 'psfc'">气压</button>
+                </div>
+              </div>
+              <MapPanel
+                v-if="mapMode === 'pollution'"
+                :data="mapSeries"
+                :metric="metric"
+                :title="`地图：${metric}`"
+                :scatter="scatterPoints"
+                :heatmap="heatmapPoints"
+                :selected-name="selectedRegion"
+                @select="handleMapSelect"
+              />
+              <MapPanel
+                v-else-if="mapMode === 'weather'"
+                :data="weatherMapSeries"
+                :metric="weatherMetricLabel"
+                :title="`气象：${weatherMetricLabel}`"
+                mode="weather"
+                :scatter="scatterPoints"
+                :wind="windVectors"
+                :flow="windFlow"
+                :selected-name="selectedRegion"
+                @select="handleMapSelect"
+              />
+              <TypeMap v-else :items="typeMapData" />
+            </div>
+            <div class="pane side-pane">
+              <LevelBar :levels="levelStats" />
+              <TrendLine
+                class="mt"
+                :metric="metric"
+                :series="trendSeries"
+                :dates="trendDates"
+              />
+              <RadialPollutant class="mt" :data="radialVector" />
+            </div>
+          </section>
+
+          <section class="layout secondary">
+            <div class="pane">
+              <SeasonalLevelStack
+                :dates="levelTimeline.dates"
+                :series="levelTimeline.series"
+                :metric="metric"
+                @select-date="handleDateChange"
+              />
+            </div>
+            <div class="pane">
+              <CorrHeatmap :matrix="corrMatrix" />
+            </div>
+          </section>
+
+          <section class="layout secondary">
+            <div class="pane">
+              <ParallelAQI :rows="parallelRows" @select="handleParallelSelect" />
+              <div class="parallel-actions">
+                <span>当前维度：{{ parallelLevel === "province" ? "省均值" : `城市（${parallelProvince || "未选"}` }} </span>
+                <button @click="resetParallel">重置到省</button>
               </div>
             </div>
-            <MapPanel
-              v-if="mapMode === 'pollution'"
-              :data="mapSeries"
-              :metric="metric"
-              :title="`地图：${metric}`"
-              :scatter="scatterPoints"
-              :heatmap="heatmapPoints"
-              :selected-name="selectedRegion"
-              @select="handleMapSelect"
-            />     
-            <MapPanel
-              v-else-if="mapMode === 'weather'"
-              :data="weatherMapSeries"
-              :metric="weatherMetricLabel"
-              :title="`气象：${weatherMetricLabel}`"
-              mode="weather"
-              :scatter="scatterPoints"
-              :wind="windVectors"
-              :flow="windFlow"
-              :selected-name="selectedRegion"
-              @select="handleMapSelect"
-            />
-            <TypeMap v-else :items="typeMapData" />
-          </div>
-          <div class="pane side-pane">
-            <LevelBar :levels="levelStats" />
-            <TrendLine
-              class="mt"
-              :metric="metric"
-              :series="trendSeries"
-              :dates="trendDates"
-            />
-            <RadialPollutant class="mt" :data="radialVector" />
-          </div>
-        </section>
-
-        <section class="layout secondary">
-          <div class="pane">
-            <SeasonalLevelStack
-              :dates="levelTimeline.dates"
-              :series="levelTimeline.series"
-              :metric="metric"
-              @select-date="handleDateChange"
-            />
-          </div>
-          <div class="pane">
-            <CorrHeatmap :matrix="corrMatrix" />
-          </div>
-        </section>
-
-        <section class="layout secondary">
-          <div class="pane">
-            <ParallelAQI :rows="parallelRows" @select="handleParallelSelect" />
-            <div class="parallel-actions">
-              <span>当前维度：{{ parallelLevel === "province" ? "省均值" : `城市（${parallelProvince || "未选"}` }} </span>
-              <button @click="resetParallel">重置到省</button>
+            <div class="pane">
+              <AQIRanking :items="aqiRanking" @select="handleRankingSelect" />
             </div>
-          </div>
-          <div class="pane">
-            <AQIRanking :items="aqiRanking" @select="handleRankingSelect" />
-          </div>
-        </section>
+          </section>
 
-        <section class="layout secondary">
-          <div class="pane">
-            <CityStackedPie
-              :city="selectedCity"
-              :day-values="cityDayValues"
-              :month-stats="cityMonthStats"
-              :month="currentDate.slice(0, 7)"
-            />
-          </div>
-          <div class="pane">
-            <CityTypeRibbon
-              :dates="cityTypeRibbon.dates"
-              :series="cityTypeRibbon.series"
-              :type-order="cityTypeRibbon.typeOrder"
-              :province="selectedRegion"
-            />
-          </div>
-        </section>
+          <section class="layout secondary">
+            <div class="pane">
+              <CityStackedPie
+                :city="selectedCity"
+                :day-values="cityDayValues"
+                :month-stats="cityMonthStats"
+                :month="currentDate.slice(0, 7)"
+              />
+            </div>
+            <div class="pane">
+              <CityTypeRibbon
+                :dates="cityTypeRibbon.dates"
+                :series="cityTypeRibbon.series"
+                :type-order="cityTypeRibbon.typeOrder"
+                :province="selectedRegion"
+              />
+            </div>
+          </section>
+        </template>
+
+        <!-- 月份视图 -->
+        <template v-else-if="viewMode === 'monthly'">
+          <MonthView
+            :current-year="currentYear"
+            :available-years="availableYears"
+            :metric="metric"
+            :selected-region="selectedRegion"
+            @update:region="handleMapSelect"
+            @select-month="handleMonthSelect"
+          />
+        </template>
       </template>
 
       <template v-else-if="isStory">
@@ -279,6 +301,7 @@ import WindCompass from "./components/WindCompass.vue";
 import PollutantRingGrid from "./components/PollutantRingGrid.vue";
 import CityStackedPie from "./components/CityStackedPie.vue";
 import CityTypeRibbon from "./components/CityTypeRibbon.vue";
+import MonthView from "./components/MonthView.vue";
 import {
   classifyLevels,
   computeRadialVector,
@@ -313,6 +336,7 @@ import {
   computeLevelTimelineByGranularity,
   loadGridData,     // <--- 确保引入
   gridToScatter,    // <--- 确保引入
+  normalizeProvince,
 } from "./utils/dataLoader";
 
 const granularity = ref("day");
@@ -326,41 +350,14 @@ const router = useRouter();
 const regionIndex = ref(null);
 const gridData = ref([]);
 
+// 视图模式：daily 或 monthly
+const viewMode = ref("daily");
+
 // 新增年份相关变量
 const currentYear = ref("2013");
 const availableYears = ref(["2013"]);
 
-function normalizeProvince(name) {
-  if (!name) return "";
-  let n = String(name).split("|").pop().trim();
 
-  // 【修正】完善映射表，包含全称作为 Key，防止被错误地处理成“北京省”
-  const direct = {
-    "北京": "北京市", "北京市": "北京市",
-    "天津": "天津市", "天津市": "天津市",
-    "上海": "上海市", "上海市": "上海市",
-    "重庆": "重庆市", "重庆市": "重庆市",
-    
-    "内蒙古": "内蒙古自治区", "内蒙古自治区": "内蒙古自治区",
-    "广西": "广西壮族自治区", "广西壮族自治区": "广西壮族自治区",
-    "新疆": "新疆维吾尔自治区", "新疆维吾尔自治区": "新疆维吾尔自治区",
-    "宁夏": "宁夏回族自治区", "宁夏回族自治区": "宁夏回族自治区",
-    "西藏": "西藏自治区", "西藏自治区": "西藏自治区",
-    
-    "香港": "香港特别行政区", "香港特别行政区": "香港特别行政区", "中国香港": "香港特别行政区",
-    "澳门": "澳门特别行政区", "澳门特别行政区": "澳门特别行政区", "中国澳门": "澳门特别行政区",
-    
-    // 黑龙江如果不特殊处理，去掉“省”后加“省”没问题，但为了保险也加上
-    "黑龙江": "黑龙江省", "黑龙江省": "黑龙江省"
-  };
-
-  if (direct[n]) return direct[n];
-
-  // 对于普通省份（河北、河南等），去掉后缀再加“省”
-  n = n.replace(/省|市|自治区|壮族自治区|维吾尔自治区|回族自治区|特别行政区/g, "").trim();
-  if (!n) return "";
-  return `${n}省`;
-}
 
 function aggregateMap(rows, metricName, granularity = "day") {
   console.log(`[DataDebug] 聚合地图数据: metricName=${metricName}, granularity=${granularity}, rows.length=${rows.length}`);
@@ -730,6 +727,11 @@ function handleTypeSelect(name) {
   selectedRegion.value = name;
 }
 
+function handleMonthSelect(month) {
+  // 可以在这里处理月份选择逻辑
+  console.log(`Selected month: ${month}`);
+}
+
 function startStoryLoop() {
   if (storyTimer || !allDays.value.length) return;
   storyTimer = setInterval(() => {
@@ -850,6 +852,37 @@ h1 {
   flex-direction: column;
   gap: 8px;
   align-items: flex-end;
+}
+
+.view-controls {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.view-toggle {
+  display: inline-flex;
+  gap: 4px;
+  background: rgba(47, 126, 87, 0.08);
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid rgba(47, 126, 87, 0.16);
+}
+
+.view-toggle button {
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 12px;
+}
+
+.view-toggle button.active {
+  color: #0f172a;
+  background: linear-gradient(120deg, #2f7e57, #8bbf5f);
+  box-shadow: 0 6px 14px rgba(47, 126, 87, 0.18);
 }
 
 .tabs {

@@ -20,6 +20,7 @@ import { registerMap } from "echarts/core";
 const props = defineProps({
   data: { type: Array, default: () => [] },
   metric: { type: String, default: "pm25" },
+  showValue: { type: Boolean, default: false },
   title: { type: String, default: "地图" },
   selectedName: { type: String, default: "" },
   mode: { type: String, default: "pollution" }, // pollution | weather
@@ -110,7 +111,12 @@ const chartOption = computed(() => {
     tooltip: {
       show: true,
       formatter: function(params) {
-        // 只显示省份名称，不显示数据
+        // 修改 Tooltip 逻辑
+        if (props.showValue && !isNaN(params.value)) {
+          // 月均视图：显示 名称 + 指标名 + 数值
+          return `${params.name}<br/>${props.metric}: ${params.value}`;
+        }
+        // 日均视图（默认）：只显示省名
         return params.name;
       }
     },

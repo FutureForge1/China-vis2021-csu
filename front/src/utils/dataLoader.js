@@ -26,13 +26,7 @@ function getFieldNameForGranularity(field, granularity) {
   return field;
 }
 
-// 适配不同粒度数据的字段访问
-function getValueFromRow(row, field, granularity) {
-  const actualField = getFieldNameForGranularity(field, granularity);
-  const value = row[actualField];
-  console.log(`[DataDebug] 从行获取值: field=${field}, actualField=${actualField}, granularity=${granularity}, value=${value}`);
-  return value;
-}
+
 const POLLUTANTS = ["pm25", "pm10", "so2", "no2", "co", "o3"];
 let REGION_INDEX = null;
 
@@ -578,19 +572,77 @@ export async function loadOneDay(dateStr) {
   }
 }
 
+export function normalizeProvince(name) {
+  if (!name) return "";
+  let n = String(name).split("|").pop().trim();
+
+  // 【修正】完善映射表，包含全称作为 Key，防止被错误地处理成“北京省”
+  const direct = {
+    "北京": "北京市", "北京市": "北京市",
+    "天津": "天津市", "天津市": "天津市",
+    "上海": "上海市", "上海市": "上海市",
+    "重庆": "重庆市", "重庆市": "重庆市",
+    
+    "内蒙古": "内蒙古自治区", "内蒙古自治区": "内蒙古自治区",
+    "广西": "广西壮族自治区", "广西壮族自治区": "广西壮族自治区",
+    "新疆": "新疆维吾尔自治区", "新疆维吾尔自治区": "新疆维吾尔自治区",
+    "宁夏": "宁夏回族自治区", "宁夏回族自治区": "宁夏回族自治区",
+    "西藏": "西藏自治区", "西藏自治区": "西藏自治区",
+    
+    "香港": "香港特别行政区", "香港特别行政区": "香港特别行政区", "中国香港": "香港特别行政区",
+    "澳门": "澳门特别行政区", "澳门特别行政区": "澳门特别行政区", "中国澳门": "澳门特别行政区",
+    
+    // 黑龙江如果不特殊处理，去掉“省”后加“省”没问题，但为了保险也加上
+    "黑龙江": "黑龙江省", "黑龙江省": "黑龙江省"
+  };
+
+  if (direct[n]) return direct[n];
+
+  // 对于普通省份（河北、河南等），去掉后缀再加“省”
+  n = n.replace(/省|市|自治区|壮族自治区|维吾尔自治区|回族自治区|特别行政区/g, "").trim();
+  if (!n) return "";
+  return `${n}省`;
+}
+
 // 加载月度数据
 export async function loadOneMonth(yearMonth) {
-  const year = yearMonth.slice(0, 4);
-  const month = yearMonth.slice(5, 7);
+  const parts = yearMonth.split("-");
+  const year = parts[0];
+  const month = parts[1].padStart(2, '0'); // 补零，确保是 "01"
+  const filename = `${year}${month}_monthly.json`;
+
+  const path = `/data/${year}/monthly/${filename}`;
 
   try {
-    const data = await fetch(`/data/${year}/monthly/${year}${month}_monthly.json`);
-    if (!data.ok) throw new Error(`Failed to load monthly data for ${yearMonth}`);
-    return await data.json();
+    const res = await fetch(path);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    
+    // 注意：你的 json 是一个数组（列表），每一项是一个城市的统计数据
+    // 我们不需要做额外处理，直接返回即可
+    return data; 
   } catch (err) {
-    console.warn(`Monthly data missing for ${yearMonth}:`, err);
+    console.warn(`[DataDebug] 加载月度聚合数据失败 ${path}:`, err);
     return [];
   }
+}
+
+export function getValueFromRow(row, field, granularity) {
+  if (granularity === "month") {
+    // 如果是月度数据，且 row 里有 pm25_mean，则优先取之
+    const meanKey = `${field}_mean`;
+    if (row[meanKey] !== undefined) {
+      return Number(row[meanKey]);
+    }
+    // 如果找不到 _mean (比如 type 这种非数值字段)，回退到原始字段名
+    return row[field];
+  } else if (granularity === "year") {
+    // 假设 yearly.json 也是类似结构
+    const meanKey = `${field}_mean`; // 或者 yearly_mean，取决于你的 yearly json
+    return Number(row[meanKey] ?? row[field]);
+  }
+  // 日数据直接取 field
+  return Number(row[field]);
 }
 
 // 加载年度数据
@@ -1186,6 +1238,72 @@ export function computeMonthlyRing(dayEntries) {
   return out;
 }
 
+// 计算月度箱线图数据
+export function computeMonthlyBoxData(dayEntries, metric = "pm25") {
+  // 按月份分组数据
+  const monthlyData = new Map();
+
+  for (const entry of dayEntries) {
+    const parts = parseDateParts(entry.date);
+    if (!parts) continue;
+
+    const month = parts.month;
+    if (!monthlyData.has(month)) {
+      monthlyData.set(month, []);
+    }
+
+    // 收集该月的指标数据
+    for (const row of entry.data) {
+      const value = getValueFromRow(row, metric, "day");
+      if (Number.isFinite(value) && value > 0) {
+        monthlyData.get(month).push(value);
+      }
+    }
+  }
+
+  // 计算每个月的箱线图数据
+  const result = [];
+  const months = Array.from(monthlyData.keys()).sort((a, b) => a - b);
+
+  for (const month of months) {
+    const values = monthlyData.get(month);
+    if (values.length === 0) {
+      result.push({
+        month,
+        min: 0,
+        q1: 0,
+        median: 0,
+        q3: 0,
+        max: 0,
+        count: 0
+      });
+      continue;
+    }
+
+    const sorted = values.sort((a, b) => a - b);
+    const min = sorted[0];
+    const max = sorted[sorted.length - 1];
+    const median = sorted[Math.floor(sorted.length / 2)];
+
+    const q1Index = Math.floor(sorted.length / 4);
+    const q3Index = Math.floor((3 * sorted.length) / 4);
+    const q1 = sorted[q1Index];
+    const q3 = sorted[q3Index];
+
+    result.push({
+      month,
+      min: Number(min.toFixed(2)),
+      q1: Number(q1.toFixed(2)),
+      median: Number(median.toFixed(2)),
+      q3: Number(q3.toFixed(2)),
+      max: Number(max.toFixed(2)),
+      count: values.length
+    });
+  }
+
+  return result;
+}
+
 // Province-level monthly pollutant grid for ring view.
 export function computeMonthlyRingGrid(dayEntries, pollutant = "pm25", orderNames = [], topN = 12) {
   const months = Array.from({ length: 12 }, (_, i) => i + 1);
@@ -1510,10 +1628,23 @@ export async function getAvailableDatesByGranularity(granularity, year) {
 // 通用的趋势系列计算，支持不同粒度
 export function computeTrendSeriesByGranularity(dataEntries, field, granularity) {
   console.log(`[DataDebug] 计算趋势系列: field=${field}, granularity=${granularity}, entries.length=${dataEntries.length}`);
-  return dataEntries.map((entry) => ({
-    date: entry.date,
-    value: averageMetric(entry.data, field, granularity),
-  }));
+  return dataEntries.map((entry) => {
+    let value;
+    if (granularity === "month") {
+      // 月度数据已经是聚合后的，直接使用平均值字段
+      const avgField = `${field}_mean`;
+      const firstRow = entry.data[0];
+      value = firstRow && firstRow[avgField] ? Number(firstRow[avgField]) : 0;
+      console.log(`[DataDebug] 月度数据直接取值: field=${avgField}, value=${value}`);
+    } else {
+      // 日数据或年数据需要计算平均值
+      value = averageMetric(entry.data, field, granularity);
+    }
+    return {
+      date: entry.date,
+      value: value,
+    };
+  });
 }
 
 // 通用的级别时间线计算，支持不同粒度
@@ -1534,13 +1665,17 @@ export function computeLevelTimelineByGranularity(dataEntries, field, granularit
   for (const entry of dataEntries) {
     dates.push(entry.date);
     const counts = buckets.map(() => 0);
+
+    // 统一逻辑：无论是月度还是日度，都使用 getValueFromRow 来获取正确的值
     for (const row of entry.data) {
+      // 修改这里：使用 getValueFromRow 自动处理 _mean 后缀
       const v = Number(getValueFromRow(row, field, granularity) ?? 0);
-      console.log(`[DataDebug] 级别计算: date=${entry.date}, value=${v}`);
+      
       if (Number.isNaN(v)) continue;
       const idx = buckets.findIndex((b) => v >= b.min && v < b.max);
       if (idx >= 0) counts[idx] += 1;
     }
+
     counts.forEach((c, i) => {
       series[i].data.push(c);
     });
