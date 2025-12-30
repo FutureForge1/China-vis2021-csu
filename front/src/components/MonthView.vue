@@ -38,6 +38,7 @@
           mode="weather"
           :selected-name="selectedRegion"
           :show-value="true"
+          :wind="monthWindVectors" 
           @select="handleMapSelect"
         />
         <TypeMap v-else :items="typeMapData" />
@@ -155,7 +156,9 @@ import {
   computeRadialVector,
   computeTrendSeries,
   computeLevelTimeline,
+  buildWindVectors,
   loadRegionIndex,
+  buildMonthlyWindVectors,
   rowsToScatter,
   attachAQI,
   computeAQIRanking,
@@ -281,10 +284,47 @@ const typeMapData = computed(() => {
   }));
 });
 
-// 月度统计数据
-// 修改 monthLevelStats
+// 2. 修正月度等级分布图 (LevelBar)
+// 逻辑分支：
+// - 如果【未选城市】：统计该月374个城市的【月均值】分布 (空间分布)
+// - 如果【已选城市】：统计该城市在该月31天的【日均值】分布 (时间分布)
 const monthLevelStats = computed(() => {
-  return classifyLevels(currentMonthDailyData.value, props.metric);
+  if (selectedCity.value) {
+    // 【微观模式】选中了城市，查看该城市的时间分布 (总数 ~30)
+    const targetCity = normalizeProvince(selectedCity.value);
+    
+    // 从日数据中筛选出该城市的数据
+    const cityDailyData = currentMonthDailyData.value.filter(row => {
+      // 兼容城市名或省名匹配 (根据你的数据结构调整)
+      const rowName = normalizeProvince(row.city || row.province);
+      return rowName === targetCity;
+    });
+    
+    return classifyLevels(cityDailyData, props.metric);
+  } else {
+    // 【宏观模式】未选城市，查看全国的空间分布 (总数 374)
+    // 使用聚合数据，避免 31 * 374 的巨大数字
+    const monthEntry = monthlyAggregatedData.value.find(m => m.month === currentMonth.value);
+    if (!monthEntry || !monthEntry.data) return classifyLevels([], props.metric);
+    
+    // 注意：classifyLevels 默认读取 raw field。
+    // 对于聚合数据，我们需要告诉它去读 pm25_mean。
+    // 但是 classifyLevels 很简单，只接受字段名。
+    // 技巧：我们可以临时映射一下，或者让 dataLoader 里的 classifyLevels 支持粒度参数。
+    
+    // 方案：直接传给它正确的数据结构
+    // 你的 monthly.json 里字段是 pm25_mean
+    // 我们需要构建一个临时数组，把 pm25_mean 映射为 pm25 传给 classifyLevels，
+    // 或者修改 classifyLevels 让它更智能。
+    // 鉴于 classifyLevels 是通用的，我们在这里处理数据更安全。
+    
+    const mappedData = monthEntry.data.map(row => ({
+      ...row,
+      [props.metric]: row[`${props.metric}_mean`] // 把 pm25_mean 赋值给 pm25，欺骗 classifyLevels
+    }));
+    
+    return classifyLevels(mappedData, props.metric);
+  }
 });
 
 // 4. 雷达图 (RadialPollutant) -> 使用当前选中月的聚合数据 (表示该月的平均污染构成)
@@ -311,6 +351,7 @@ const monthlyBoxData = computed(() => {
 
 // 7. 季节性堆叠图 (SeasonalLevelStack) -> 使用全年聚合数据 (展示12个月的等级构成趋势)
 const monthlyLevelTimeline = computed(() => {
+  // 这里 metric 传入的是 "pm25"，dataLoader 会自动找 "pm25_mean"
   return computeLevelTimelineByGranularity(monthlyAggregatedData.value, props.metric, "month");
 });
 
@@ -377,7 +418,20 @@ const monthAQICompare = computed(() => {
   };
 });
 
-
+// 新增计算属性：月度风场向量
+const monthWindVectors = computed(() => {
+  if (mapMode.value === 'weather' && weatherMetric.value === 'wind') {
+    const monthEntry = monthlyAggregatedData.value.find(m => m.month === currentMonth.value);
+    
+    // 确保有数据且地理索引已加载
+    if (!monthEntry || !monthEntry.data || !regionIndex.value) return [];
+    
+    // 使用新函数：专门处理月度聚合数据
+    // scale 设为 0.15 (因为城市点比较稀疏，箭头可以画稍微长一点)
+    return buildMonthlyWindVectors(monthEntry.data, regionIndex.value, 0.15);
+  }
+  return [];
+});
 
 // 事件处理
 function handleMapSelect(name) {
@@ -394,10 +448,12 @@ function handleRankingSelect(name) {
 async function loadMonthlyAggregatedData() {
   console.log(`[MonthView] 开始加载 ${props.currentYear} 全年聚合数据...`);
   
-  // 构造 12 个月的标识符，例如 ["2013-01", "2013-02", ...]
-  const months = Array.from({ length: 12 }, (_, i) => {
-    return `${props.currentYear}-${String(i + 1).padStart(2, '0')}`;
-  });
+  // 1. 顺便加载地理索引 (如果是首次)
+  if (!regionIndex.value) {
+    regionIndex.value = await loadRegionIndex();
+  }
+
+  const months = Array.from({ length: 12 }, (_, i) => `${props.currentYear}-${String(i + 1).padStart(2, '0')}`);
 
   // 并发请求
   const promises = months.map(m => loadOneMonth(m));

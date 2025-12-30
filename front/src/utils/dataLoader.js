@@ -344,100 +344,16 @@ export function rowsToScatter(rows, metricKey, regionIndex) {
 }
 
 
-// export function buildWindVectors(rows, regionIndex, scale = 0.3) {
-//   if (!regionIndex) return [];
-//   const lines = [];
-//   for (const row of rows) {
-//     const name = normalizeRegionName(row.city) || normalizeRegionName(row.county) || normalizeRegionName(row.province);
-//     const coord = name ? regionIndex.get(name) : null;
-//     const u = Number(row?.u);
-//     const v = Number(row?.v);
-//     if (!coord || !Number.isFinite(u) || !Number.isFinite(v)) continue;
-//     const speed = Math.sqrt(u * u + v * v);
-//     const dx = u * scale;
-//     const dy = v * scale;
-//     lines.push({
-//       name,
-//       speed,
-//       coords: [
-//         [coord.lon, coord.lat],
-//         [coord.lon + dx, coord.lat + dy],
-//       ],
-//     });
-//   }
-//   return lines;
-// }
-
-// Densified stream-like lines for a "flow" layer (adds jittered seeds to thicken the effect).
-
-// export function buildWindVectors(rows, regionIndex, scale = 0.04) {
-//   const lines = [];
-  
-//   // 优化策略：
-//   // 1. 如果数据量大于 2000 (通常是网格数据)，则启用采样 (step > 1)
-//   // 2. 网格数据很密，scale (线段长度系数) 需要设小一点，防止线段互相打架
-//   const isLargeDataset = rows.length > 2000;
-  
-//   // 采样步长：如果是大数据，每 8 个点取 1 个；否则全量渲染
-//   const step = isLargeDataset ? 8 : 1; 
-  
-//   // 线条长度缩放：大数据时缩短一点
-//   const finalScale = isLargeDataset ? 0.06 : 0.3;
-
-//   // 使用步长循环
-//   for (let i = 0; i < rows.length; i += step) {
-//     const row = rows[i];
-    
-//     let coord = null;
-
-//     // 1. 优先尝试直接读取经纬度 (网格数据)
-//     const lat = Number(row.lat || row.latitude);
-//     const lon = Number(row.lon || row.longitude);
-//     if (Number.isFinite(lat) && Number.isFinite(lon)) {
-//       coord = { lon, lat };
-//     } 
-//     // 2. 查表 (站点/城市数据)
-//     else if (regionIndex) {
-//       const name = normalizeRegionName(row.city) || normalizeRegionName(row.county) || normalizeRegionName(row.province);
-//       coord = name ? regionIndex.get(name) : null;
-//     }
-
-//     const u = Number(row?.u);
-//     const v = Number(row?.v);
-    
-//     if (!coord || !Number.isFinite(u) || !Number.isFinite(v)) continue;
-    
-//     const speed = Math.sqrt(u * u + v * v);
-    
-//     // 忽略极小的风速，减少噪点
-//     if (speed < 0.5) continue;
-
-//     // 计算线段终点
-//     const dx = u * finalScale;
-//     const dy = v * finalScale;
-    
-//     lines.push({
-//       coords: [
-//         [coord.lon, coord.lat],          // 起点
-//         [coord.lon + dx, coord.lat + dy] // 终点
-//       ],
-//       // 将速度值赋给 value，让 ECharts visualMap 自动处理颜色
-//       value: speed, 
-//     });
-//   }
-//   return lines;
-// }
-
+// 1. 【恢复原样】日均视图专用的函数（不要动它，让它保持读取 row.u, row.v 和 lat/lon）
 export function buildWindVectors(rows, regionIndex, scale = 0.04) {
   const lines = [];
-
-  // 全局固定采样步长：每隔 8 条取一条
-  const step = 4;
+  // 保持原本的采样逻辑
+  const step = 4; 
 
   for (let i = 0; i < rows.length; i += step) {
     const row = rows[i];
 
-    // 获取经纬度或通过索引匹配
+    // 日均视图核心：优先读取网格经纬度
     let coord = null;
     const lat = Number(row.lat || row.latitude);
     const lon = Number(row.lon || row.longitude);
@@ -448,15 +364,17 @@ export function buildWindVectors(rows, regionIndex, scale = 0.04) {
       coord = name ? regionIndex.get(name) : null;
     }
 
+    // 只读取 row.u / row.v
     const u = Number(row?.u);
     const v = Number(row?.v);
+    
     if (!coord || !Number.isFinite(u) || !Number.isFinite(v)) continue;
-
+    
     const speed = Math.sqrt(u * u + v * v);
     if (speed <= 0) continue;
 
-    // 使用角度和速度决定线段方向与长度：length = speed * scale
     const angle = Math.atan2(v, u);
+    // 这里保持您原本的逻辑
     const length = speed * (Number.isFinite(scale) ? scale : 0.04);
     const dx = Math.cos(angle) * length;
     const dy = Math.sin(angle) * length;
@@ -466,10 +384,51 @@ export function buildWindVectors(rows, regionIndex, scale = 0.04) {
         [coord.lon, coord.lat],
         [coord.lon + dx, coord.lat + dy],
       ],
-      value: speed, // 传入速度值，用于颜色深度映射
+      value: speed,
     });
   }
+  return lines;
+}
 
+// 2. 【新增】月度视图专用函数
+// 特点：读取 _mean 后缀，不采样(step=1)，只通过 regionIndex 匹配城市
+export function buildMonthlyWindVectors(rows, regionIndex, scale = 0.15) {
+  const lines = [];
+  
+  // 月度数据只有374个城市，不需要采样，直接遍历所有
+  for (const row of rows) {
+    // 1. 只通过 regionIndex 找坐标（月度聚合数据里没有 lat/lon）
+    const name = normalizeRegionName(row.city) || normalizeRegionName(row.province);
+    const coord = name ? regionIndex.get(name) : null;
+    
+    // 2. 读取 _mean 字段
+    const u = Number(row.u_mean ?? row.u); 
+    const v = Number(row.v_mean ?? row.v);
+    
+    if (!coord || !Number.isFinite(u) || !Number.isFinite(v)) continue;
+
+    const speed = Math.sqrt(u * u + v * v);
+    if (speed <= 0) continue;
+
+    const angle = Math.atan2(v, u);
+    const length = speed * scale; // 使用月度传入的 scale
+    const dx = Math.cos(angle) * length;
+    const dy = Math.sin(angle) * length;
+
+    lines.push({
+      coords: [
+        [coord.lon, coord.lat],
+        [coord.lon + dx, coord.lat + dy],
+      ],
+      value: speed,
+      lineStyle: {
+        color: '#fff', // 这里的样式其实会被 MapPanel 覆盖，主要是 coords 和 value
+        width: 1.5,
+        opacity: 0.9,
+        cap: "round"
+      }
+    });
+  }
   return lines;
 }
 
