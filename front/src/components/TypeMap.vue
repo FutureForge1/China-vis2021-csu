@@ -25,6 +25,11 @@ import { registerMap } from "echarts/core";
 
 const props = defineProps({
   items: { type: Array, default: () => [] }, // [{name, type, primary}]
+  data: { type: Array, default: () => [] },
+  title: { type: String, default: "主导类型分布" },
+  selectedName: { type: String, default: "" },
+  // 【新增】接收地图名称，默认为 'china'
+  mapName: { type: String, default: "china" }
 });
 
 const colors = {
@@ -44,7 +49,10 @@ const legendItems = computed(() =>
 );
 
 const option = computed(() => {
-  const data = props.items.map((d) => {
+  const pData = props.data || [];   // 如果 props.data 为 undefined，赋值为 []
+  const pItems = props.items || []; // 同理
+  const sourceData = pData.length > 0 ? pData : pItems;
+  const data = sourceData.map((d) => {
     const type = d.type || "未知";
     const color = colors[type] || "#e5e7eb";
     return {
@@ -73,7 +81,7 @@ const option = computed(() => {
     series: [
       {
         type: "map",
-        map: "china",
+        map: props.mapName,
         data,
         roam: true,
         emphasis: { label: { show: false } },
@@ -94,7 +102,7 @@ const option = computed(() => {
       },
       {
         type: "map",
-        map: "china",
+        map: props.mapName,
         data: data.map((d) => ({
           ...d,
           itemStyle: {
@@ -136,7 +144,13 @@ async function loadMap() {
 }
 
 onMounted(() => {
-  loadMap();
+  // 【修改4】如果是默认的 china 地图，则执行内部加载逻辑
+  // 如果是外部传入的地图（如 china_cities），假设父组件已加载完毕，直接置为 true
+  if (props.mapName === 'china') {
+    loadMap();
+  } else {
+    mapReady.value = true;
+  }
 });
 </script>
 

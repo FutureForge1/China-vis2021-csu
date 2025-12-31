@@ -28,6 +28,7 @@ const props = defineProps({
   wind: { type: Array, default: () => [] }, // [{coords:[[lon,lat],[lon2,lat2]], speed}]
   flow: { type: Array, default: () => [] }, // densified lines for flow effect
   heatmap: { type: Array, default: () => [] }, // [[lon,lat,val]]
+  mapName: { type: String, default: "china" },
 });
 
 const emit = defineEmits(["select"]);
@@ -91,8 +92,12 @@ const getWindSpeedWidth = (speed, minSpeed, maxSpeed) => {
 
 // 基础地图配置，包含拖拽等设置
 const baseGeoConfig = {
-  map: "china",
+  map: props.mapName,
   emphasis: { label: { show: false } },
+  label: {
+    show: false, // 默认不显示省名，防止重叠
+    color: "#666"
+  },
   // 移除silent，允许tooltip显示省份名称
   // 增强边界线样式，让边界线更明显，填充完全透明
   itemStyle: {
@@ -217,7 +222,7 @@ const chartOption = computed(() => {
         : {
             name: props.metric,
             type: "map",
-            map: "china",
+            map: props.mapName,
             roam: true,
             emphasis: { label: { show: false }, focus: 'none' },
             data: props.data,

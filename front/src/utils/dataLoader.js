@@ -4,6 +4,7 @@
  *   /public/data/2013/MM/DD/YYYYMMDD.json
  *   /public/data/2013/index.json -> { "days": ["2013-01-01", ...] }
  */
+import * as echarts from "echarts";
 
 const BASES = ["/data/2013", "/data/2013/01", "/data/2013/1"];
 const HOUR_BASE = "/data/2013_hour";
@@ -672,6 +673,83 @@ export function computeRadialVector(rows) {
   }));
 }
 
+// 月聚合数据专用雷达图计算函数
+export function computeRadialVectorByMonthly(monthlyRows) {
+  const metrics = ["pm25", "pm10", "so2", "no2", "co", "o3"];
+  const values = [];
+
+  for (const m of metrics) {
+    // 月聚合数据使用 _mean 后缀的字段
+    const fieldName = `${m}_mean`;
+    let sum = 0;
+    let count = 0;
+
+    for (const row of monthlyRows) {
+      const val = Number(row[fieldName] ?? 0);
+      if (!Number.isNaN(val) && val > 0) {
+        sum += val;
+        count += 1;
+      }
+    }
+
+    values.push({
+      indicator: m.toUpperCase(),
+      value: count > 0 ? sum / count : 0,
+    });
+  }
+
+  return values;
+}
+
+// 月视图箱线图数据计算函数
+export function computeMonthlyBoxDataForView(monthlyEntries, metric = "pm25") {
+  const result = [];
+
+  // monthlyEntries: [{ month: 1, data: [...] }, ...]
+  for (let month = 1; month <= 12; month++) {
+    const monthEntry = monthlyEntries.find(entry => entry.month === month);
+    const values = [];
+
+    if (monthEntry && monthEntry.data) {
+      // 从月聚合数据中收集该月的指标值
+      for (const row of monthEntry.data) {
+        const value = Number(row[`${metric}_mean`] ?? 0);
+        if (!Number.isNaN(value) && value > 0) {
+          values.push(value);
+        }
+      }
+    }
+
+    if (values.length === 0) {
+      result.push({
+        month,
+        [metric]: 0,
+        [`${metric}_mean`]: 0
+      });
+      continue;
+    }
+
+    // 计算箱线图统计值
+    const sorted = values.sort((a, b) => a - b);
+    const min = sorted[0];
+    const max = sorted[sorted.length - 1];
+    const median = sorted[Math.floor(sorted.length / 2)];
+
+    const q1Index = Math.floor(sorted.length / 4);
+    const q3Index = Math.floor((3 * sorted.length) / 4);
+    const q1 = sorted[q1Index];
+    const q3 = sorted[q3Index];
+
+    result.push({
+      month,
+      [metric]: median, // MonthlyBoxPlot组件会使用这个字段
+      [`${metric}_mean`]: median
+    });
+  }
+
+  return result;
+}
+
 export function computeTrendSeries(dayEntries, field) {
   // dayEntries: [{ date, data }]
   return dayEntries.map((entry) => ({
@@ -681,19 +759,19 @@ export function computeTrendSeries(dayEntries, field) {
 }
 
 function averageMetric(rows, field, granularity = "day") {
-  console.log(`[DataDebug] 计算平均值: field=${field}, granularity=${granularity}, rows.length=${rows.length}`);
+  // console.log(`[DataDebug] 计算平均值: field=${field}, granularity=${granularity}, rows.length=${rows.length}`);
   let sum = 0;
   let count = 0;
   for (const row of rows) {
     const v = Number(getValueFromRow(row, field, granularity) ?? 0);
-    console.log(`[DataDebug] 行数据:`, row, `字段值: ${v}`);
+    // console.log(`[DataDebug] 行数据:`, row, `字段值: ${v}`);
     if (!Number.isNaN(v)) {
       sum += v;
       count += 1;
     }
   }
   const result = count ? sum / count : 0;
-  console.log(`[DataDebug] 平均值计算结果: ${result} (count=${count}, sum=${sum})`);
+  // console.log(`[DataDebug] 平均值计算结果: ${result} (count=${count}, sum=${sum})`);
   return result;
 }
 
@@ -950,7 +1028,7 @@ function computeShares(row) {
   return shares;
 }
 
-export function computeTypeByRegion(rows, field = "city") {
+export function computeTypeByRegion(rows, field = "city", granularity = "day") {
   const groups = new Map();
   for (const row of rows) {
     const key = row?.[field] || row?.city || row?.province;
@@ -960,7 +1038,9 @@ export function computeTypeByRegion(rows, field = "city") {
     }
     const g = groups.get(key);
     for (const m of POLLUTANTS) {
-      const v = Number(row?.[m]);
+      // 【核心修改】使用 getValueFromRow 自动适配字段名 (pm25 vs pm25_mean)
+      const v = Number(getValueFromRow(row, m, granularity));
+      
       if (Number.isFinite(v) && v > 0) {
         g.sums[m] += v;
       }
@@ -970,6 +1050,7 @@ export function computeTypeByRegion(rows, field = "city") {
 
   const result = [];
   for (const [name, g] of groups.entries()) {
+    // 这里计算出的 avg 对象 key 已经是标准化的 pm25 等，所以 computeShares 不用改
     const avg = Object.fromEntries(
       POLLUTANTS.map((m) => [m, g.count ? g.sums[m] / g.count : 0])
     );
@@ -1642,4 +1723,61 @@ export function computeLevelTimelineByGranularity(dataEntries, field, granularit
 
   console.log(`[DataDebug] 级别时间线计算完成: dates.length=${dates.length}, series.length=${series.length}`);
   return { dates, series };
+}
+
+
+
+/**
+ * 加载并注册市级 GeoJSON 地图
+ * 注意：请确保 china_city.json 文件位于 public 目录下
+ */
+export async function loadCityMap() {
+  // 移除 window.echarts，直接使用导入的 echarts 对象检查
+  if (echarts.getMap('china_cities')) {
+    console.log("已经注册过china_cities，直接返回");
+    return echarts.getMap('china_cities').geoJson;
+  }
+
+  try {
+    const res = await fetch("/china_city.json"); // 确保文件在 public 目录下
+    if (!res.ok) throw new Error("City GeoJSON not found");
+    const geoJson = await res.json();
+    
+    // 注册地图
+    echarts.registerMap('china_cities', geoJson);
+    console.log('china_city.json注册成功');
+    
+    return geoJson;
+  } catch (err) {
+    console.error("Failed to load city map:", err);
+    return null;
+  }
+}
+
+/**
+ * 名字匹配辅助函数
+ * 将业务数据中的城市名 (dataName) 映射到 GeoJSON 中的标准名 (geoNames列表)
+ */
+export function matchGeoName(dataName, geoNames) {
+  if (!dataName || !geoNames) return null;
+
+  // 1. 尝试完全匹配
+  if (geoNames.includes(dataName)) return dataName;
+
+  // 2. 预处理：去掉空白
+  const cleanData = dataName.trim();
+  
+  // 3. 模糊匹配策略
+  // 策略：比较“去后缀”后的核心词
+  // 常见后缀：市, 地区, 自治州, 盟
+  const coreName = cleanData.replace(/(?:市|地区|自治州|盟)$/, "");
+
+  const match = geoNames.find(gName => {
+    // 地图里的名字也去掉后缀比对
+    const coreG = gName.replace(/(?:市|地区|自治州|盟)$/, "");
+    // 双向包含匹配：比如 "黔南" 匹配 "黔南布依族..." 或 "株洲" 匹配 "株洲市"
+    return coreG === coreName || coreG.includes(coreName) || coreName.includes(coreG);
+  });
+
+  return match || null;
 }

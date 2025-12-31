@@ -6,13 +6,51 @@
       <div class="section-meta">月均数据 · 年度趋势 · 空间分布</div>
     </div>
 
+    <div class="time-bar">
+      <div class="year-selector">
+        <label>年份：</label>
+        <select :value="currentYear" @change="e => $emit('update:currentYear', e.target.value)">
+          <option v-for="y in availableYears" :key="y" :value="y">{{ y }}年</option>
+        </select>
+      </div>
+      <div class="month-selector">
+        <label>月份：</label>
+        <div class="month-chips">
+          <button 
+            v-for="m in 12" 
+            :key="m" 
+            :class="['month-chip', { active: m === currentMonth }]"
+            @click="handleMonthSelect(m)"
+          >
+            {{ m }}月
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- 第一行：地图和月度统计 -->
     <section class="layout">
       <div class="pane map-pane">
         <div class="map-switch">
-          <button :class="{ active: mapMode === 'pollution' }" @click="mapMode = 'pollution'">污染</button>
-          <button :class="{ active: mapMode === 'weather' }" @click="mapMode = 'weather'">气象</button>
-          <button :class="{ active: mapMode === 'type' }" @click="mapMode = 'type'">类型</button>
+          <div class="mode-group">
+            <button :class="{ active: mapMode === 'pollution' }" @click="mapMode = 'pollution'">污染</button>
+            <button :class="{ active: mapMode === 'weather' }" @click="mapMode = 'weather'">气象</button>
+            <button :class="{ active: mapMode === 'type' }" @click="mapMode = 'type'">类型</button>
+          </div>
+          
+          <div class="divider" v-if="mapMode !== 'type'"></div>
+
+          <div v-if="mapMode === 'pollution'" class="metric-toggle">
+            <button 
+              v-for="m in ['pm25', 'pm10', 'so2', 'no2', 'co', 'o3']" 
+              :key="m"
+              :class="{ active: metric === m }" 
+              @click="$emit('update:metric', m)"
+            >
+              {{ m.toUpperCase() }}
+            </button>
+          </div>
+
           <div v-if="mapMode === 'weather'" class="weather-toggle">
             <button :class="{ active: weatherMetric === 'wind' }" @click="weatherMetric = 'wind'">风速</button>
             <button :class="{ active: weatherMetric === 'temp' }" @click="weatherMetric = 'temp'">气温</button>
@@ -20,28 +58,45 @@
             <button :class="{ active: weatherMetric === 'psfc' }" @click="weatherMetric = 'psfc'">气压</button>
           </div>
         </div>
+
         <MapPanel
-          v-if="mapMode === 'pollution'"
+          v-if="mapMode === 'pollution' && monthMapSeries.length > 0"
+          :key="`pol-${currentYear}-${currentMonth}-${metric}`"
           :data="monthMapSeries"
           :metric="metric"
-          :title="`月均地图：${metric}`"
+          :title="`月均分布：${metric}`"
           :selected-name="selectedRegion"
-          :show-value="true"  
+          :show-value="true"
+          map-name="china_cities" 
           @select="handleMapSelect"
         />
         
         <MapPanel
-          v-else-if="mapMode === 'weather'"
+          v-else-if="mapMode === 'weather' && (weatherMapSeries.length > 0 || monthWindVectors.length > 0)"
+          :key="`wea-${currentYear}-${currentMonth}-${weatherMetric}`"
           :data="weatherMapSeries"
           :metric="weatherMetricLabel"
-          :title="`气象：${weatherMetricLabel}`"
+          :title="`气象分布：${weatherMetricLabel}`"
           mode="weather"
           :selected-name="selectedRegion"
-          :show-value="true"
           :wind="monthWindVectors" 
+          :show-value="true"
+          :map-name="currentMapName" 
           @select="handleMapSelect"
         />
-        <TypeMap v-else :items="typeMapData" />
+
+        <div v-else-if="!isMonthDetailLoading && monthMapSeries.length === 0" class="placeholder-map">
+          数据加载中或暂无数据...
+        </div>
+        
+        <TypeMap
+          v-else-if="mapMode === 'type' && typeMapData.length > 0"
+          :key="`typ-${currentYear}-${currentMonth}`"
+          :data="typeMapData"
+          title="主导污染类型"
+          :selected-name="selectedRegion"
+          :map-name="currentMapName" 
+        />
       </div>
       <div class="pane side-pane">
         <LevelBar :levels="monthLevelStats" />
@@ -175,14 +230,16 @@ import {
   computeLevelTimelineByGranularity,
   computeMonthlyBoxData,
   loadOneMonth,
-  normalizeProvince
+  normalizeProvince,
+  loadCityMap,
+  matchGeoName,
 } from "../utils/dataLoader";
 
 // Props
 const props = defineProps({
   currentYear: {
     type: String,
-    default: "2013"
+    default: "2015"
   },
   metric: {
     type: String,
@@ -199,7 +256,12 @@ const props = defineProps({
 });
 
 // Emits
-const emit = defineEmits(['update:region', 'select-month']);
+const emit = defineEmits([
+  "update:region", 
+  "select-month", 
+  "update:metric",      // <--- 关键：修复污染物切换无效
+  "update:currentYear"  // <--- 关键：支持年份切换
+]);
 
 // 响应式数据
 const mapMode = ref("pollution");
@@ -210,58 +272,85 @@ const currentMonth = ref(1);
 const monthlyAggregatedData = ref([]); // 存 12 个月的 _monthly.json 数据
 const currentMonthDailyData = ref([]); // 存当前选中月份的 30 天日数据 (用于箱线图、堆叠图)
 const isMonthDetailLoading = ref(false); // 详情加载状态
-
+// 【新增】存储 GeoJSON 中的所有标准城市名，用于匹配
+const mapGeoNames = ref([]);
 // 计算属性
 const selectedCity = computed(() => props.selectedRegion || "");
 
-// 月份地图数据
+// 修改为返回 { name: '地图标准名', value: 数值 } 格式
 const monthMapSeries = computed(() => {
+  // 如果地图标准名还没加载，暂时返回空
+  if (mapGeoNames.value.length === 0) return [];
+
   const monthEntry = monthlyAggregatedData.value.find(m => m.month === currentMonth.value);
   if (!monthEntry || !monthEntry.data) return [];
 
-  // 使用 Map 进行聚合计算
-  const sums = new Map();
-  const counts = new Map();
-
+  const mapData = [];
+  
   for (const row of monthEntry.data) {
-    const prov = normalizeProvince(row.province); // 归一化省名
-    // 读取预计算的月均值
-    const val = Number(row[`${props.metric}_mean`] ?? 0);
+    // 获取数据中的原始名称
+    const rawName = row.city || row.province; 
     
-    if (!prov || Number.isNaN(val)) continue;
+    // 【核心】将数据名 映射到 地图名
+    // 比如：数据 "株洲市" -> 地图 "株洲市" (如果地图里有)
+    // 比如：数据 "黔南布依族苗族自治州" -> 地图 "黔南州" (假设地图里是简称)
+    const mappedName = matchGeoName(rawName, mapGeoNames.value);
     
-    sums.set(prov, (sums.get(prov) || 0) + val);
-    counts.set(prov, (counts.get(prov) || 0) + 1);
-  }
+    const val = Number(row[`${props.metric}_mean`]);
 
-  // 生成聚合后的省级数据
-  return Array.from(sums.entries()).map(([prov, sum]) => ({
-    name: prov,
-    // 保留1位小数
-    value: Number((sum / (counts.get(prov) || 1)).toFixed(1))
-  }));
+    if (mappedName && Number.isFinite(val)) {
+      mapData.push({
+        name: mappedName, // ECharts 需要这个名字与 GeoJSON properties.name 一致
+        value: val,
+        // (可选) 可以在 tooltip 中使用 rawName 显示原始全称
+        originalName: rawName 
+      });
+    }
+  }
+  return mapData;
 });
 
-// 气象地图数据
-// 修改 weatherMapSeries
+// 【新增】根据当前指标决定底图类型
+const currentMapName = computed(() => {
+  // 风速 -> 省级地图 (china)
+  if (mapMode.value === 'weather' && weatherMetric.value === 'wind') {
+    return 'china';
+  }
+  // 其他 -> 市级地图 (china_cities)
+  return 'china_cities';
+});
+
+
+// 【修改】气象地图数据 (色块部分)
 const weatherMapSeries = computed(() => {
+  // 1. 如果是风速模式，不要返回色块数据！避免 MapPanel 渲染空数据的 visualMap 报错
+  if (weatherMetric.value === 'wind') {
+    return []; 
+  }
+
+  // 2. 其他模式 (温度/湿度等)，走市级地图匹配逻辑
+  if (mapGeoNames.value.length === 0) return [];
   const monthEntry = monthlyAggregatedData.value.find(m => m.month === currentMonth.value);
   if (!monthEntry || !monthEntry.data) return [];
   
-  const sums = new Map();
-  const counts = new Map();
+  const mapData = [];
   for (const row of monthEntry.data) {
-    const prov = normalizeProvince(row.province);
-    const val = Number(row[`${weatherMetric.value}_mean`] ?? 0);
-    if (!prov || Number.isNaN(val)) continue;
-    sums.set(prov, (sums.get(prov) || 0) + val);
-    counts.set(prov, (counts.get(prov) || 0) + 1);
+    const rawName = row.city || row.province;
+    const mappedName = matchGeoName(rawName, mapGeoNames.value);
+    const val = Number(row[`${weatherMetric.value}_mean`]);
+    
+    if (mappedName && Number.isFinite(val)) {
+      mapData.push({
+        name: mappedName, 
+        value: val,
+        originalName: rawName
+      });
+    }
   }
-  return Array.from(sums.entries()).map(([prov, sum]) => ({
-    name: prov,
-    value: sum / (counts.get(prov) || 1),
-  }));
+  return mapData;
 });
+
+
 
 const weatherMetricLabel = computed(() => {
   const map = { wind: "风速", temp: "气温", rh: "湿度", psfc: "气压" };
@@ -271,59 +360,102 @@ const weatherMetricLabel = computed(() => {
 // 类型地图数据
 // 修改 typeMapData
 const typeMapData = computed(() => {
-  // 找到当前选中月份
+  // 1. 安全检查：如果市级地图名字还没加载，先返回空，防止计算出错
+  if (mapGeoNames.value.length === 0) return [];
+
   const monthEntry = monthlyAggregatedData.value.find(m => m.month === currentMonth.value);
   if (!monthEntry || !monthEntry.data) return [];
+
+  // 2. 【核心修改】将聚合粒度从 "province" 改为 "city"
+  // 这样 computeTypeByRegion 会返回每个市的主导类型
+  const rawList = computeTypeByRegion(monthEntry.data, "city", "month");
+  // 3. 名字匹配：将数据里的城市名映射到 GeoJSON 标准名
+  const validList = [];
+  for (const item of rawList) {
+    // item.name 是数据里的城市名 (如 "株洲市")
+    const mappedName = matchGeoName(item.name, mapGeoNames.value);
+    
+    if (mappedName) {
+      validList.push({
+        ...item,
+        name: mappedName // 替换为地图能识别的标准名
+      });
+    }
+  }
   
-  // 使用工具函数计算类型
-  return computeTypeByRegion(monthEntry.data, "province").map((item) => ({
-    ...item,
-    name: normalizeProvince(item.name),
-    type: item.type || "未知",
-    primary: item.primary || "-",
-  }));
+  return validList;
 });
 
 // 2. 修正月度等级分布图 (LevelBar)
 // 逻辑分支：
 // - 如果【未选城市】：统计该月374个城市的【月均值】分布 (空间分布)
 // - 如果【已选城市】：统计该城市在该月31天的【日均值】分布 (时间分布)
+// const monthLevelStats = computed(() => {
+//   if (selectedCity.value) {
+//     // 【微观模式】选中了城市，查看该城市的时间分布 (总数 ~30)
+//     const targetCity = normalizeProvince(selectedCity.value);
+    
+//     // 从日数据中筛选出该城市的数据
+//     const cityDailyData = currentMonthDailyData.value.filter(row => {
+//       // 兼容城市名或省名匹配 (根据你的数据结构调整)
+//       const rowName = normalizeProvince(row.city || row.province);
+//       return rowName === targetCity;
+//     });
+    
+//     return classifyLevels(cityDailyData, props.metric);
+//   } else {
+//     // 【宏观模式】未选城市，查看全国的空间分布 (总数 374)
+//     // 使用聚合数据，避免 31 * 374 的巨大数字
+//     const monthEntry = monthlyAggregatedData.value.find(m => m.month === currentMonth.value);
+//     if (!monthEntry || !monthEntry.data) return classifyLevels([], props.metric);
+    
+//     // 注意：classifyLevels 默认读取 raw field。
+//     // 对于聚合数据，我们需要告诉它去读 pm25_mean。
+//     // 但是 classifyLevels 很简单，只接受字段名。
+//     // 技巧：我们可以临时映射一下，或者让 dataLoader 里的 classifyLevels 支持粒度参数。
+    
+//     // 方案：直接传给它正确的数据结构
+//     // 你的 monthly.json 里字段是 pm25_mean
+//     // 我们需要构建一个临时数组，把 pm25_mean 映射为 pm25 传给 classifyLevels，
+//     // 或者修改 classifyLevels 让它更智能。
+//     // 鉴于 classifyLevels 是通用的，我们在这里处理数据更安全。
+    
+//     const mappedData = monthEntry.data.map(row => ({
+//       ...row,
+//       [props.metric]: row[`${props.metric}_mean`] // 把 pm25_mean 赋值给 pm25，欺骗 classifyLevels
+//     }));
+    
+//     return classifyLevels(mappedData, props.metric);
+//   }
+// });
 const monthLevelStats = computed(() => {
+  // 如果选中了具体城市 (从地图点击)
   if (selectedCity.value) {
-    // 【微观模式】选中了城市，查看该城市的时间分布 (总数 ~30)
-    const targetCity = normalizeProvince(selectedCity.value);
+    // 逻辑简化：直接从当月已加载的日数据中找这个城市
+    // 注意：regionIndex 中的名字通常是 "北京市"，数据中可能是 "北京" 或 "北京市"，需注意匹配
+    // 建议使用 includes 或 normalize
+    const target = selectedCity.value; 
+
+    // 过滤出该城市的 28-31 条日数据
+    const cityDays = currentMonthDailyData.value.filter(r => 
+      (r.city && r.city.includes(target)) || (r.province && r.province.includes(target))
+    );
     
-    // 从日数据中筛选出该城市的数据
-    const cityDailyData = currentMonthDailyData.value.filter(row => {
-      // 兼容城市名或省名匹配 (根据你的数据结构调整)
-      const rowName = normalizeProvince(row.city || row.province);
-      return rowName === targetCity;
-    });
-    
-    return classifyLevels(cityDailyData, props.metric);
-  } else {
-    // 【宏观模式】未选城市，查看全国的空间分布 (总数 374)
-    // 使用聚合数据，避免 31 * 374 的巨大数字
+    // 统计这 ~30 天的等级分布
+    return classifyLevels(cityDays, props.metric);
+  } 
+  // 如果没选城市 (宏观视图)
+  else {
+    // 保持之前的逻辑：展示该月 374 个城市的月均等级分布
     const monthEntry = monthlyAggregatedData.value.find(m => m.month === currentMonth.value);
     if (!monthEntry || !monthEntry.data) return classifyLevels([], props.metric);
-    
-    // 注意：classifyLevels 默认读取 raw field。
-    // 对于聚合数据，我们需要告诉它去读 pm25_mean。
-    // 但是 classifyLevels 很简单，只接受字段名。
-    // 技巧：我们可以临时映射一下，或者让 dataLoader 里的 classifyLevels 支持粒度参数。
-    
-    // 方案：直接传给它正确的数据结构
-    // 你的 monthly.json 里字段是 pm25_mean
-    // 我们需要构建一个临时数组，把 pm25_mean 映射为 pm25 传给 classifyLevels，
-    // 或者修改 classifyLevels 让它更智能。
-    // 鉴于 classifyLevels 是通用的，我们在这里处理数据更安全。
-    
-    const mappedData = monthEntry.data.map(row => ({
-      ...row,
-      [props.metric]: row[`${props.metric}_mean`] // 把 pm25_mean 赋值给 pm25，欺骗 classifyLevels
+
+    // 映射字段名以适配 classifyLevels
+    const statsData = monthEntry.data.map(row => ({
+      [props.metric]: row[`${props.metric}_mean`] 
     }));
     
-    return classifyLevels(mappedData, props.metric);
+    return classifyLevels(statsData, props.metric);
   }
 });
 
@@ -418,16 +550,19 @@ const monthAQICompare = computed(() => {
   };
 });
 
-// 新增计算属性：月度风场向量
+// 【修改】风场矢量数据 (箭头部分)
 const monthWindVectors = computed(() => {
+  // 只有在 气象模式 且 指标为 风速 时才计算
   if (mapMode.value === 'weather' && weatherMetric.value === 'wind') {
     const monthEntry = monthlyAggregatedData.value.find(m => m.month === currentMonth.value);
     
-    // 确保有数据且地理索引已加载
+    // 必须要有数据且地理索引已加载
     if (!monthEntry || !monthEntry.data || !regionIndex.value) return [];
     
-    // 使用新函数：专门处理月度聚合数据
-    // scale 设为 0.15 (因为城市点比较稀疏，箭头可以画稍微长一点)
+    // 调用工具函数：
+    // 使用 monthEntry.data (市级数据 374条)
+    // 使用 regionIndex (查找经纬度)
+    // scale 设为 0.15 (根据箭头大小调整)
     return buildMonthlyWindVectors(monthEntry.data, regionIndex.value, 0.15);
   }
   return [];
@@ -448,28 +583,31 @@ function handleRankingSelect(name) {
 async function loadMonthlyAggregatedData() {
   console.log(`[MonthView] 开始加载 ${props.currentYear} 全年聚合数据...`);
   
-  // 1. 顺便加载地理索引 (如果是首次)
-  if (!regionIndex.value) {
-    regionIndex.value = await loadRegionIndex();
+  try {
+    // 【关键修复】确保地理索引优先加载
+    if (!regionIndex.value) {
+      regionIndex.value = await loadRegionIndex();
+    }
+
+    const months = Array.from({ length: 12 }, (_, i) => `${props.currentYear}-${String(i + 1).padStart(2, '0')}`);
+    
+    // 并行加载12个月的 monthly.json
+    const promises = months.map(m => loadOneMonth(m));
+    const results = await Promise.all(promises);
+
+    monthlyAggregatedData.value = results.map((data, index) => ({
+      date: months[index],
+      month: index + 1,
+      data: data || []
+    }));
+    
+    console.log("[MonthView] 全年聚合数据加载完成");
+    
+    // 加载当前选中月份的详情
+    await loadMonthDetail(currentMonth.value);
+  } catch (err) {
+    console.error("[MonthView] 加载聚合数据失败:", err);
   }
-
-  const months = Array.from({ length: 12 }, (_, i) => `${props.currentYear}-${String(i + 1).padStart(2, '0')}`);
-
-  // 并发请求
-  const promises = months.map(m => loadOneMonth(m));
-  const results = await Promise.all(promises);
-
-  // 整理数据结构
-  monthlyAggregatedData.value = results.map((data, index) => ({
-    date: months[index],        // "2013-01"
-    month: index + 1,           // 1
-    data: data || []            // 这是一个数组，包含该月374个城市的统计对象
-  }));
-  
-  console.log("[MonthView] 全年聚合数据加载完成");
-  
-  // 初始化完成后，默认加载第一个月(或当前选中的月)的详情
-  await loadMonthDetail(currentMonth.value);
 }
 
 // 2. 按需加载：选中某个月时，去加载那一天的日数据
@@ -522,10 +660,27 @@ function handleMonthSelect(month) {
   }
 }
 
-// 监听年份变化
+// 【新增】初始化地图函数
+async function initMapData() {
+  // 1. 加载市级地图名字 (给污染/温度等用)
+  const geoJson = await loadCityMap();
+  if (geoJson && geoJson.features) {
+    mapGeoNames.value = geoJson.features.map(f => f.properties.name);
+  }
+  
+  // 2. 加载地理坐标索引 (给风廓线用，用来定坐标)
+  if (!regionIndex.value) {
+    regionIndex.value = await loadRegionIndex();
+  }
+}
+
+// 在 watch(currentYear) 或 onMounted 中调用
+// 建议放在 loadMonthlyAggregatedData 内部或并行调用
 watch(() => props.currentYear, () => {
-  loadMonthlyAggregatedData(); // 使用新的函数名
+  initMapData(); // 确保地图已加载
+  loadMonthlyAggregatedData();
 }, { immediate: true });
+
 
 // 监听指标变化
 watch(() => props.metric, () => {
@@ -684,5 +839,124 @@ watch(() => props.metric, () => {
   .tertiary {
     grid-template-columns: 1fr;
   }
+}
+
+.placeholder-map {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #94a3b8;
+  font-size: 0.9rem;
+  background: #f8fafc;
+  border-radius: 8px;
+}
+
+/* 时间控制栏 */
+.time-bar {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  background: #fff;
+  padding: 8px 12px;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  margin-bottom: 8px;
+}
+
+.year-selector, .month-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.year-selector label, .month-selector label {
+  font-size: 0.85rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.year-selector select {
+  padding: 4px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  color: #1e293b;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+}
+
+.month-chips {
+  display: flex;
+  gap: 4px;
+}
+
+.month-chip {
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.month-chip:hover {
+  background: #f1f5f9;
+}
+
+.month-chip.active {
+  background: #2f7e57;
+  color: white;
+  font-weight: 600;
+  box-shadow: 0 2px 4px rgba(47, 126, 87, 0.2);
+}
+
+/* 地图切换栏优化 */
+.map-switch {
+  /* 确保 map-switch 是 flex 布局 */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* 调整原有样式适应新结构 */
+  padding: 6px 10px;
+}
+
+.mode-group {
+  display: flex;
+  gap: 4px;
+}
+
+.divider {
+  width: 1px;
+  height: 16px;
+  background: #e2e8f0;
+  margin: 0 4px;
+}
+
+.metric-toggle, .weather-toggle {
+  display: flex;
+  gap: 4px;
+}
+
+/* 通用按钮样式微调 */
+.map-switch button {
+  white-space: nowrap;
+}
+
+.metric-toggle button, .weather-toggle button {
+  font-size: 0.75rem;
+  padding: 3px 8px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+}
+
+.metric-toggle button.active, .weather-toggle button.active {
+  background: rgba(47, 126, 87, 0.1);
+  border-color: #2f7e57;
+  color: #2f7e57;
+  font-weight: 600;
 }
 </style>

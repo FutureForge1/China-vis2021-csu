@@ -21,7 +21,7 @@
             </div>
           </div>
           <YearControls
-            :current-year="currentYear"
+            :current-year="viewMode === 'daily' ? currentYear : monthViewYear"
             :available-years="availableYears"
             @update:year="handleYearChange"
           />
@@ -150,12 +150,14 @@
         <!-- 月份视图 -->
         <template v-else-if="viewMode === 'monthly'">
           <MonthView
-            :current-year="currentYear"
+            :current-year="monthViewYear"
             :available-years="availableYears"
-            :metric="metric"
+            :metric="monthViewMetric"
             :selected-region="selectedRegion"
             @update:region="handleMapSelect"
             @select-month="handleMonthSelect"
+            @update:metric="monthViewMetric = $event"
+            @update:currentYear="monthViewYear = $event"
           />
         </template>
       </template>
@@ -353,9 +355,12 @@ const gridData = ref([]);
 // 视图模式：daily 或 monthly
 const viewMode = ref("daily");
 
+const monthViewYear = ref("2016");
+const monthViewMetric = ref("pm25");
+
 // 新增年份相关变量
-const currentYear = ref("2013");
-const availableYears = ref(["2013"]);
+const currentYear = ref("2016");
+const availableYears = ref(["2016"]);
 
 
 
@@ -370,7 +375,7 @@ function aggregateMap(rows, metricName, granularity = "day") {
                        granularity === "month" ? `${metricName}_mean` :
                        granularity === "year" ? `${metricName}_yearly_mean` : metricName;
     const val = Number(row[actualField] ?? 0);
-    console.log(`[DataDebug] 聚合行: province=${row.province}, normalized=${prov}, field=${actualField}, value=${val}`);
+    // console.log(`[DataDebug] 聚合行: province=${row.province}, normalized=${prov}, field=${actualField}, value=${val}`);
     if (!prov || Number.isNaN(val)) continue;
     sums.set(prov, (sums.get(prov) || 0) + val);
     counts.set(prov, (counts.get(prov) || 0) + 1);
@@ -694,8 +699,14 @@ async function handleDateChange(value) {
 }
 
 async function handleYearChange(value) {
-  currentYear.value = value;
-  await loadDataForCurrentGranularity();
+  if (viewMode.value === 'daily') {
+    // 日均视图模式：更新 currentYear 并重新加载数据
+    currentYear.value = value;
+    await loadDataForCurrentGranularity();
+  } else {
+    // 月份视图模式：只更新 monthViewYear，MonthView 组件内部会监听并自动刷新
+    monthViewYear.value = value;
+  }
 }
 
 async function handleGranularityChange(value) {

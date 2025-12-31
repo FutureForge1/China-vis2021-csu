@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-修复 daily JSON 中 province 字段（现在为 city），并把 china_city.json 按省拆分到 public/province/
+修复 daily JSON 中 province 字段（现在为 city），只处理2015和2016年数据
 
 用法（在项目 root 下运行）:
   python front/scripts/fix_province_and_split.py
 
 会默认使用：
   region_file = front/public/region.json  (如果存在，用它做 city->province 映射)
-  china_city = front/public/china_city.json
   data_root = front/public/data
-  out_province_dir = front/public/province
 """
 
 import os
@@ -50,14 +48,16 @@ def load_region_map(region_path):
     print("Loaded region mapping entries:", len(mapping))
     return mapping
 
-def fix_daily_provinces(data_root, mapping):
+def fix_daily_provinces(data_root, mapping, target_years=None):
+    if target_years is None:
+        target_years = ['2015', '2016']  # 只处理2015和2016年
     missing = set()
     updated_files = 0
     file_count = 0
     # Assume daily files are under data_root/<year>/<month>/<day>/<YYYYMMDD>.json
     for year in sorted(os.listdir(data_root)):
         ypath = os.path.join(data_root, year)
-        if not os.path.isdir(ypath) or not year.isdigit():
+        if not os.path.isdir(ypath) or not year.isdigit() or year not in target_years:
             continue
         for month in sorted(os.listdir(ypath)):
             mpath = os.path.join(ypath, month)
@@ -104,67 +104,6 @@ def fix_daily_provinces(data_root, mapping):
         print("Missing sample:", list(missing)[:20])
     return missing
 
-def split_china_city(china_city_path, mapping, out_dir):
-    if not os.path.exists(china_city_path):
-        print("china_city.json not found:", china_city_path)
-        return
-    with open(china_city_path, 'r', encoding='utf-8') as f:
-        try:
-            arr = json.load(f)
-        except Exception as e:
-            print("failed to load china_city.json", e)
-            return
-    # If it's a GeoJSON FeatureCollection, extract features list
-    if isinstance(arr, dict) and 'features' in arr and isinstance(arr['features'], list):
-        features = arr['features']
-        print("china_city.json appears to be a GeoJSON FeatureCollection with", len(features), "features")
-        arr_iter = features
-        # each feature is expected as dict with 'properties'
-    else:
-        arr_iter = arr
-    byprov = defaultdict(list)
-    missing = set()
-    for rec in arr_iter:
-        # rec may be a dict or a string; handle both
-        if isinstance(rec, str):
-            city = rec
-            prov_from_rec = None
-        elif isinstance(rec, dict):
-            # If this is a GeoJSON feature, its properties may hold the city name
-            if 'properties' in rec and isinstance(rec['properties'], dict):
-                props = rec['properties']
-                city = props.get('city') or props.get('name') or props.get('cnname') or ""
-                prov_from_rec = props.get('province') or props.get('prov') or None
-            else:
-                city = rec.get('city') or rec.get('name') or ""
-                prov_from_rec = rec.get('province') or rec.get('prov') or None
-        else:
-            city = str(rec)
-            prov_from_rec = None
-        key = normalize_name(city)
-        prov = None
-        if key:
-            prov = mapping.get(key)
-        # fallback: if rec contains province, use it
-        if not prov and prov_from_rec:
-            prov = prov_from_rec
-        if prov:
-            byprov[prov].append(rec)
-        else:
-            missing.add(key or city)
-    os.makedirs(out_dir, exist_ok=True)
-    for prov, items in byprov.items():
-        safe = re.sub(r'[\\/:*?"<>|]', '_', prov) or prov
-        outpath = os.path.join(out_dir, f"{safe}.json")
-        with open(outpath, 'w', encoding='utf-8') as f:
-            json.dump(items, f, ensure_ascii=False, indent=2)
-    index = {"provinces": list(byprov.keys())}
-    with open(os.path.join(out_dir, "index.json"), 'w', encoding='utf-8') as f:
-        json.dump(index, f, ensure_ascii=False, indent=2)
-    print("Split china_city into provinces:", len(byprov), "missing cities:", len(missing))
-    if missing:
-        print("Missing sample cities:", list(missing)[:30])
-    return missing
 
 def main():
     print("Working dir:", WORKDIR)
@@ -174,9 +113,10 @@ def main():
         mapping = load_region_map(REGION_FILE)
     else:
         print("region.json not found at", REGION_FILE, ", trying to use china_city.json as fallback (may lack province info).")
-    missing1 = fix_daily_provinces(DATA_ROOT, mapping)
-    missing2 = split_china_city(CHINA_CITY_FILE, mapping, OUT_PROVINCE_DIR)
-    print("Done. Missing in daily:", len(missing1) if missing1 else 0, "Missing in split:", len(missing2) if missing2 else 0)
+    # 只处理2015和2016年的数据
+    target_years = ['2015', '2016']
+    missing1 = fix_daily_provinces(DATA_ROOT, mapping, target_years)
+    print("Done. Missing in daily:", len(missing1) if missing1 else 0)
 
 if __name__ == "__main__":
     main()
