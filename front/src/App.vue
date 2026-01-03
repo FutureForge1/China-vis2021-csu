@@ -279,7 +279,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch, provide } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import TimeControls from "./components/TimeControls.vue";
 import YearControls from "./components/YearControls.vue";
@@ -355,7 +355,7 @@ const gridData = ref([]);
 // 视图模式：daily 或 monthly
 const viewMode = ref("daily");
 
-const monthViewYear = ref("2016");
+const monthViewYear = ref("2013");
 const monthViewMetric = ref("pm25");
 
 // 新增年份相关变量
@@ -611,6 +611,13 @@ const storyMood = computed(() => {
 });
 
 async function bootstrap() {
+  // 初始化默认选中区域
+  if (viewMode.value === 'monthly') {
+    selectedRegion.value = "长沙市";
+  } else {
+    selectedRegion.value = ""; // 日均视图默认全国
+  }
+
   // 加载可用年份
   const years = await loadAvailableYears();
   availableYears.value = years;
@@ -770,6 +777,37 @@ watch(
 
 onBeforeUnmount(() => {
   stopStoryLoop();
+});
+
+// 【新增】提供一个修改方法给后代组件使用
+const setSelectedRegion = (name) => {
+  console.log("更新选中区域:", name); // 方便调试
+  selectedRegion.value = name;
+};
+provide('setSelectedRegion', setSelectedRegion);
+
+// 【新增】监听路由变化，实现视图状态隔离
+watch(() => route.path, (newPath, oldPath) => {
+  // 只要切换了顶层导航（路由），就重置选中区域
+  if (newPath !== oldPath) {
+    // 月视图默认长沙市，其他视图（包括日视图和类型分析视图）默认全国
+    if (viewMode.value === 'monthly') {
+      selectedRegion.value = "长沙市";
+    } else {
+      selectedRegion.value = ""; // 日视图和类型分析视图都默认全国
+    }
+    console.log("视图切换，设置 selectedRegion:", selectedRegion.value);
+  }
+});
+
+watch(viewMode, () => {
+  // 切换到月视图时，设置默认选中长沙市
+  if (viewMode.value === 'monthly') {
+    selectedRegion.value = "长沙市";
+  } else {
+    selectedRegion.value = "";
+  }
+  console.log("视图模式切换(日/月)，设置 selectedRegion:", selectedRegion.value);
 });
 
 watch(metric, () => {

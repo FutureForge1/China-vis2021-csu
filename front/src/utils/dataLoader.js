@@ -702,53 +702,53 @@ export function computeRadialVectorByMonthly(monthlyRows) {
 }
 
 // 月视图箱线图数据计算函数
-export function computeMonthlyBoxDataForView(monthlyEntries, metric = "pm25") {
-  const result = [];
+// export function computeMonthlyBoxDataForView(monthlyEntries, metric = "pm25") {
+//   const result = [];
 
-  // monthlyEntries: [{ month: 1, data: [...] }, ...]
-  for (let month = 1; month <= 12; month++) {
-    const monthEntry = monthlyEntries.find(entry => entry.month === month);
-    const values = [];
+//   // monthlyEntries: [{ month: 1, data: [...] }, ...]
+//   for (let month = 1; month <= 12; month++) {
+//     const monthEntry = monthlyEntries.find(entry => entry.month === month);
+//     const values = [];
 
-    if (monthEntry && monthEntry.data) {
-      // 从月聚合数据中收集该月的指标值
-      for (const row of monthEntry.data) {
-        const value = Number(row[`${metric}_mean`] ?? 0);
-        if (!Number.isNaN(value) && value > 0) {
-          values.push(value);
-        }
-      }
-    }
+//     if (monthEntry && monthEntry.data) {
+//       // 从月聚合数据中收集该月的指标值
+//       for (const row of monthEntry.data) {
+//         const value = Number(row[`${metric}_mean`] ?? 0);
+//         if (!Number.isNaN(value) && value > 0) {
+//           values.push(value);
+//         }
+//       }
+//     }
 
-    if (values.length === 0) {
-      result.push({
-        month,
-        [metric]: 0,
-        [`${metric}_mean`]: 0
-      });
-      continue;
-    }
+//     if (values.length === 0) {
+//       result.push({
+//         month,
+//         [metric]: 0,
+//         [`${metric}_mean`]: 0
+//       });
+//       continue;
+//     }
 
-    // 计算箱线图统计值
-    const sorted = values.sort((a, b) => a - b);
-    const min = sorted[0];
-    const max = sorted[sorted.length - 1];
-    const median = sorted[Math.floor(sorted.length / 2)];
+//     // 计算箱线图统计值
+//     const sorted = values.sort((a, b) => a - b);
+//     const min = sorted[0];
+//     const max = sorted[sorted.length - 1];
+//     const median = sorted[Math.floor(sorted.length / 2)];
 
-    const q1Index = Math.floor(sorted.length / 4);
-    const q3Index = Math.floor((3 * sorted.length) / 4);
-    const q1 = sorted[q1Index];
-    const q3 = sorted[q3Index];
+//     const q1Index = Math.floor(sorted.length / 4);
+//     const q3Index = Math.floor((3 * sorted.length) / 4);
+//     const q1 = sorted[q1Index];
+//     const q3 = sorted[q3Index];
 
-    result.push({
-      month,
-      [metric]: median, // MonthlyBoxPlot组件会使用这个字段
-      [`${metric}_mean`]: median
-    });
-  }
+//     result.push({
+//       month,
+//       [metric]: median, // MonthlyBoxPlot组件会使用这个字段
+//       [`${metric}_mean`]: median
+//     });
+//   }
 
-  return result;
-}
+//   return result;
+// }
 
 export function computeTrendSeries(dayEntries, field) {
   // dayEntries: [{ date, data }]
@@ -891,6 +891,24 @@ export function computeAQI(row) {
   };
 }
 
+// 月聚合数据专用AQI计算函数
+export function computeAQIMonthly(row) {
+  const metrics = ["pm25", "pm10", "so2", "no2", "co", "o3"];
+  const iaqis = metrics.map((m) => ({
+    pollutant: m,
+    iaqi: computeIAQI(row?.[`${m}_mean`], m), // 使用_mean后缀字段
+  }));
+  const primary = iaqis.reduce(
+    (acc, cur) => (cur.iaqi > (acc?.iaqi ?? -Infinity) ? cur : acc),
+    null
+  );
+  return {
+    aqi: primary ? primary.iaqi : 0,
+    primaryPollutant: primary ? primary.pollutant : null,
+    iaqis,
+  };
+}
+
 // Convenience: attach AQI/IAQI to each row [{...data, aqi, primaryPollutant, iaqis}]
 export function attachAQI(rows) {
   return rows.map((row) => {
@@ -906,6 +924,46 @@ export function computeAQIRanking(rows, field = "province", topN = 15) {
     const key = row?.[field] || row?.province || row?.city;
     if (!key) continue;
     const { aqi, primaryPollutant } = computeAQI(row);
+    if (!Number.isFinite(aqi)) continue;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        sumAQI: 0,
+        count: 0,
+        primaryCounts: new Map(),
+      });
+    }
+    const g = groups.get(key);
+    g.sumAQI += aqi;
+    g.count += 1;
+    if (primaryPollutant) {
+      g.primaryCounts.set(primaryPollutant, (g.primaryCounts.get(primaryPollutant) || 0) + 1);
+    }
+  }
+
+  const items = [];
+  for (const [name, g] of groups.entries()) {
+    const avg = g.count ? g.sumAQI / g.count : 0;
+    let primary = null;
+    let best = -Infinity;
+    for (const [p, c] of g.primaryCounts.entries()) {
+      if (c > best) {
+        best = c;
+        primary = p;
+      }
+    }
+    items.push({ name, aqi: Number(avg.toFixed(1)), primaryPollutant: primary });
+  }
+
+  return items.sort((a, b) => b.aqi - a.aqi).slice(0, topN);
+}
+
+// 月聚合数据专用AQI排名计算函数
+export function computeAQIRankingMonthly(rows, field = "province", topN = 15) {
+  const groups = new Map();
+  for (const row of rows) {
+    const key = row?.[field] || row?.province || row?.city;
+    if (!key) continue;
+    const { aqi, primaryPollutant } = computeAQIMonthly(row);
     if (!Number.isFinite(aqi)) continue;
     if (!groups.has(key)) {
       groups.set(key, {
@@ -1278,6 +1336,59 @@ export function computeMonthlyRing(dayEntries) {
   return out;
 }
 
+// 月聚合数据专用月环图计算函数
+export function computeMonthlyRingMonthly(monthlyEntries) {
+  const out = [];
+  const months = Array.from({ length: 12 }, (_, i) => i + 1);
+
+  for (const month of months) {
+    const monthEntry = monthlyEntries.find(entry => entry.month === month);
+    if (!monthEntry || !monthEntry.data || monthEntry.data.length === 0) {
+      // 没有数据时创建空数据结构
+      const data = POLLUTANTS.map((p) => ({
+        indicator: p.toUpperCase(),
+        value: 0,
+      }));
+      out.push({ name: `${month}月`, data, aqi: 0, level: "优" });
+      continue;
+    }
+
+    // 计算该月的平均值
+    const sums = Object.fromEntries(POLLUTANTS.map((m) => [m, 0]));
+    const counts = Object.fromEntries(POLLUTANTS.map((m) => [m, 0]));
+    let aqiSum = 0;
+    let aqiCount = 0;
+
+    for (const row of monthEntry.data) {
+      // 计算AQI
+      const { aqi } = computeAQIMonthly(row);
+      if (Number.isFinite(aqi)) {
+        aqiSum += aqi;
+        aqiCount += 1;
+      }
+
+      // 计算各污染物的平均值
+      for (const m of POLLUTANTS) {
+        const v = Number(row?.[`${m}_mean`]);
+        if (Number.isFinite(v) && v > 0) {
+          sums[m] += v;
+          counts[m] += 1;
+        }
+      }
+    }
+
+    const data = POLLUTANTS.map((p) => ({
+      indicator: p.toUpperCase(),
+      value: counts[p] ? Number((sums[p] / counts[p]).toFixed(2)) : 0,
+    }));
+
+    const avgAQI = aqiCount ? Number((aqiSum / aqiCount).toFixed(1)) : 0;
+    out.push({ name: `${month}月`, data, aqi: avgAQI, level: aqiToLevel(avgAQI) });
+  }
+
+  return out;
+}
+
 // 计算月度箱线图数据
 export function computeMonthlyBoxData(dayEntries, metric = "pm25") {
   // 按月份分组数据
@@ -1469,6 +1580,77 @@ export function computeCityMonthStats(dayEntries, cityName, monthFilter) {
 }
 
 // City type trajectory within a month (per city, per day -> type index).
+// export function computeCityTypeTrajectory(dayEntries, provinceFilter = null, monthFilter = null) {
+//   const typeOrder = [
+//     "偏燃烧型",
+//     "偏钢铁型",
+//     "偏机动车型",
+//     "其他型",
+//     "标准型",
+//     "偏氮氧化型",
+//     "偏二次型",
+//     "偏沙尘型",
+//   ];
+//   const typeIndex = new Map(typeOrder.map((t, i) => [t, i]));
+//   const dates = [];
+//   const perCity = new Map();
+
+//   for (const entry of dayEntries) {
+//     const parts = parseDateParts(entry.date);
+//     // 月份过滤逻辑保持不变
+//     if (!parts || (monthFilter && parts.month !== monthFilter)) continue;
+    
+//     dates.push(entry.date);
+    
+//     // --- 核心修改开始 ---
+//     let data = entry.data;
+
+//     if (provinceFilter) {
+//       // 1. 【优先】尝试严格匹配（保留原逻辑）
+//       // 这是日均视图正常工作的路径。如果这里能匹配到数据，直接使用，绝不运行后面的逻辑。
+//       const strictMatches = entry.data.filter((r) => 
+//         (r?.province === provinceFilter) || (r?.city === provinceFilter)
+//       );
+
+//       if (strictMatches.length > 0) {
+//         data = strictMatches;
+//       } else {
+//         // 2. 【兜底】如果严格匹配为空（月均视图常见情况），尝试归一化模糊匹配
+//         const target = normalizeProvince(provinceFilter);
+//         data = entry.data.filter((r) => 
+//           normalizeProvince(r?.province) === target || 
+//           normalizeProvince(r?.city) === target
+//         );
+//       }
+//     }
+//     // --- 核心修改结束 ---
+
+//     // 后续计算逻辑保持不变
+//     const typed = computeTypeByRegion(data, "city");
+//     const map = new Map(typed.map((t) => [normalizeRegionName(t.name), t.type]));
+    
+//     // 对齐数据长度
+//     for (const name of map.keys()) {
+//       if (!perCity.has(name)) perCity.set(name, []);
+//     }
+//     for (const [name, series] of perCity.entries()) {
+//       const type = map.get(name);
+//       const idx = typeIndex.has(type) ? typeIndex.get(type) : typeIndex.size;
+//       series.push(idx ?? null);
+//     }
+//   }
+
+//   const series = Array.from(perCity.entries()).map(([name, data]) => ({
+//     name,
+//     data,
+//   }));
+//   return { dates, typeOrder, series };
+// }
+
+// ==========================================
+// 【修改】: 城市类型演变轨迹
+// 策略：使用“核心词匹配”替代“强制加省”，解决城市名匹配失败和全称简称不一致的问题。
+// ==========================================
 export function computeCityTypeTrajectory(dayEntries, provinceFilter = null, monthFilter = null) {
   const typeOrder = [
     "偏燃烧型",
@@ -1482,20 +1664,55 @@ export function computeCityTypeTrajectory(dayEntries, provinceFilter = null, mon
   ];
   const typeIndex = new Map(typeOrder.map((t, i) => [t, i]));
   const dates = [];
-  const perCity = new Map(); // city -> values[]
+  const perCity = new Map();
+
+  // 内部辅助：提取地名核心词（去掉各种后缀）
+  const getCoreName = (name) => {
+    if (!name) return "";
+    return String(name).replace(/(?:省|市|自治区|壮族自治区|维吾尔自治区|回族自治区|特别行政区|自治州|地区|盟|县|区|旗)$/g, "").trim();
+  };
+
+  // 预处理过滤目标的核心词
+  const coreTarget = provinceFilter ? getCoreName(provinceFilter) : null;
 
   for (const entry of dayEntries) {
     const parts = parseDateParts(entry.date);
     if (!parts || (monthFilter && parts.month !== monthFilter)) continue;
+    
     dates.push(entry.date);
-    const typed = computeTypeByRegion(
-      provinceFilter
-        ? entry.data.filter((r) => (r?.province || r?.city) === provinceFilter)
-        : entry.data,
-      "city"
-    );
+    
+    let data = entry.data;
+
+    if (provinceFilter && coreTarget) {
+      // 1. 【优先】尝试严格全名匹配
+      const strictMatches = entry.data.filter((r) => 
+        (r?.province === provinceFilter) || (r?.city === provinceFilter)
+      );
+
+      if (strictMatches.length > 0) {
+        data = strictMatches;
+      } else {
+        // 2. 【兜底】核心词模糊匹配
+        // 解决 "廊坊市"(filter) vs "廊坊"(data) 或 "黔南州"(data) vs "黔南..."(filter)
+        data = entry.data.filter((r) => {
+          const coreP = getCoreName(r?.province);
+          const coreC = getCoreName(r?.city);
+          
+          // 只要省名或市名的核心词与目标匹配（相等或包含）
+          return (
+            coreP === coreTarget || 
+            coreC === coreTarget || 
+            (coreC && coreTarget && (coreC.includes(coreTarget) || coreTarget.includes(coreC)))
+          );
+        });
+      }
+    }
+
+    // 后续逻辑保持不变
+    const typed = computeTypeByRegion(data, "city");
     const map = new Map(typed.map((t) => [normalizeRegionName(t.name), t.type]));
-    // ensure all seen cities align lengths
+    
+    // 对齐数据长度
     for (const name of map.keys()) {
       if (!perCity.has(name)) perCity.set(name, []);
     }
@@ -1780,4 +1997,37 @@ export function matchGeoName(dataName, geoNames) {
   });
 
   return match || null;
+}
+
+
+// ==========================================
+// 【新增】: 月度视图专用 - 箱线图数据计算
+// 说明：返回该月所有城市的具体数值列表，而不是计算好的均值/中位数。
+// 组件 MonthlyBoxPlot 会接收这些原始数据并在前端计算 min/Q1/median/Q3/max。
+// ==========================================
+export function computeMonthlyBoxDataForView(monthlyEntries, metric = "pm25") {
+  const result = [];
+
+  // monthlyEntries结构: [{ month: 1, data: [...] }, ...]
+  for (const entry of monthlyEntries) {
+    if (!entry.data) continue;
+    const m = entry.month;
+    
+    // 遍历该月下的所有城市数据
+    for (const row of entry.data) {
+      // 优先取 _mean 后缀 (月度聚合字段)，如果没有则取原字段
+      const value = Number(row[`${metric}_mean`] ?? row[metric]);
+      
+      // 只要数值有效，就作为一条原始记录返回
+      if (Number.isFinite(value)) {
+        result.push({
+          month: m,
+          [metric]: value,            // 核心数值
+          [`${metric}_mean`]: value   // 兼容字段
+        });
+      }
+    }
+  }
+
+  return result;
 }

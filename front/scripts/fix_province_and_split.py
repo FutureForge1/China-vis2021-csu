@@ -114,7 +114,7 @@ def main():
     else:
         print("region.json not found at", REGION_FILE, ", trying to use china_city.json as fallback (may lack province info).")
     # 只处理2015和2016年的数据
-    target_years = ['2015', '2016']
+    target_years = ['2015']
     missing1 = fix_daily_provinces(DATA_ROOT, mapping, target_years)
     print("Done. Missing in daily:", len(missing1) if missing1 else 0)
 

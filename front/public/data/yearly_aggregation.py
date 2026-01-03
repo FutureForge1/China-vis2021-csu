@@ -205,7 +205,7 @@ def main():
     data_dir = os.path.dirname(os.path.abspath(__file__))
 
     # 需要处理的年份
-    years_to_process = [ '2016']
+    years_to_process = [ '2015']
 
     total_records = 0
 

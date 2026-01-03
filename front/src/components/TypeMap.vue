@@ -13,14 +13,14 @@
       </div>
     </div>
     <div class="chart" v-if="mapReady">
-      <VChart :option="option" autoresize />
+      <VChart :option="option" autoresize @click="handleClick" />
     </div>
     <div v-else class="placeholder">地图加载中，请检查 /public/china.json</div>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref , watch , inject} from "vue";
 import { registerMap } from "echarts/core";
 
 const props = defineProps({
@@ -47,6 +47,8 @@ const mapReady = ref(false);
 const legendItems = computed(() =>
   Object.entries(colors).map(([label, color]) => ({ label, color }))
 );
+
+const setSelectedRegion = inject('setSelectedRegion');
 
 const option = computed(() => {
   const pData = props.data || [];   // 如果 props.data 为 undefined，赋值为 []
@@ -119,6 +121,15 @@ const option = computed(() => {
     ],
   };
 });
+
+function handleClick(params) {
+  // params.name 是点击区域的名称 (如 "北京市", "廊坊市")
+  // 确保点击有效且注入的方法存在
+  if (params.name && setSelectedRegion) {
+    console.log("TypeMap 点击:", params.name);
+    setSelectedRegion(params.name);
+  }
+}
 
 const MAP_PATHS = [
   "/china.json",

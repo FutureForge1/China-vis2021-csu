@@ -142,11 +142,18 @@
       </div>
       <div class="pane">
         <CityTypeRibbon
+          v-if="monthCityTypeRibbon.dates && monthCityTypeRibbon.dates.length > 0"
           :dates="monthCityTypeRibbon.dates"
           :series="monthCityTypeRibbon.series"
           :type-order="monthCityTypeRibbon.typeOrder"
           :province="selectedRegion"
         />
+        <div v-else class="placeholder-pane">
+          <div class="placeholder-content">
+            <h4>城市类型演变</h4>
+            <p>暂无数据或数据加载中</p>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -217,11 +224,13 @@ import {
   rowsToScatter,
   attachAQI,
   computeAQIRanking,
+  computeAQIRankingMonthly,
   computeTypeByRegion,
   computeTypeTimeline,
   computeYearlyRadial,
   computeWindRose,
   computeMonthlyRing,
+  computeMonthlyRingMonthly,
   computeCityMonthStats,
   computeCityTypeTrajectory,
   loadDataByGranularity,
@@ -234,6 +243,9 @@ import {
   loadCityMap,
   matchGeoName,
 } from "../utils/dataLoader";
+
+// 单独导入新添加的函数
+import { computeRadialVectorByMonthly, computeMonthlyBoxDataForView } from "../utils/dataLoader";
 
 // Props
 const props = defineProps({
@@ -463,7 +475,7 @@ const monthLevelStats = computed(() => {
 const monthRadialVector = computed(() => {
   const monthEntry = monthlyAggregatedData.value.find(m => m.month === currentMonth.value);
   const data = monthEntry ? monthEntry.data : [];
-  return computeRadialVector(data);
+  return computeRadialVectorByMonthly(data);
 });
 
 // 5. 趋势线 (TrendLine) -> 使用全年聚合数据
@@ -477,8 +489,8 @@ const monthTrendDates = computed(() => {
 
 // 6. 箱线图 (MonthlyBoxPlot) -> 使用全年聚合数据 (展示12个月的波动)
 const monthlyBoxData = computed(() => {
-  // dataLoader 会自动处理 _mean 后缀
-  return computeMonthlyBoxData(monthlyAggregatedData.value, props.metric);
+  // 使用专门为月聚合数据设计的函数
+  return computeMonthlyBoxDataForView(monthlyAggregatedData.value, props.metric);
 });
 
 // 7. 季节性堆叠图 (SeasonalLevelStack) -> 使用全年聚合数据 (展示12个月的等级构成趋势)
@@ -513,19 +525,33 @@ const monthCityStats = computed(() => {
 
 // 10. 城市类型演变 (CityTypeRibbon) -> 使用日详情数据 (展示该月每天的变化)
 const monthCityTypeRibbon = computed(() => {
-  return computeCityTypeTrajectory(currentMonthDailyData.value, props.selectedRegion || null, currentMonth.value);
+  // 只有当有日数据时才计算
+  if (!currentMonthDailyData.value || currentMonthDailyData.value.length === 0) {
+    console.log('[MonthView] CityTypeRibbon: No daily data available');
+    return { dates: [], series: [], typeOrder: [] };
+  }
+
+  const result = computeCityTypeTrajectory(currentMonthDailyData.value, props.selectedRegion || null, currentMonth.value);
+  console.log('[MonthView] CityTypeRibbon data:', {
+    dates: result.dates?.length,
+    series: result.series?.length,
+    selectedRegion: props.selectedRegion,
+    currentMonth: currentMonth.value,
+    dailyDataLength: currentMonthDailyData.value?.length
+  });
+  return result;
 });
 
 // 11. 排名 (AQIRanking) -> 使用当前选中月的聚合数据
 const monthAQIRanking = computed(() => {
   const monthEntry = monthlyAggregatedData.value.find(m => m.month === currentMonth.value);
   const data = monthEntry ? monthEntry.data : [];
-  return computeAQIRanking(data, "province", 15);
+  return computeAQIRankingMonthly(data, "province", 15);
 });
 
 // 12. 环形图 (MonthlyRing) -> 使用全年聚合数据
 const monthlyRings = computed(() => {
-  return computeMonthlyRing(monthlyAggregatedData.value);
+  return computeMonthlyRingMonthly(monthlyAggregatedData.value);
 });
 
 // 13. 风向玫瑰 (WindCompass) -> 使用日详情数据 (聚合数据只有u/v均值，无法画出分布)
@@ -617,34 +643,38 @@ async function loadMonthDetail(monthNum) {
 
   const year = props.currentYear;
   const monthStr = String(monthNum).padStart(2, '0');
-  
+
   // 你的目录结构是 /data/2013/01/01/20130101.json
   // 我们需要计算该月有多少天，然后并发加载
   const daysInMonth = new Date(year, monthNum, 0).getDate(); // 获取当月天数
-  const promises = [];
+  const dayEntries = [];
 
+  // 并发加载该月所有天，构建 { date, data } 格式
+  const promises = [];
   for (let d = 1; d <= daysInMonth; d++) {
     const dayPadded = String(d).padStart(2, '0');
-    // 使用 dataLoader 里的 loadOneDay 或者直接 fetch
-    // 这里复用 loadDataByGranularity("day", ...) 即可
     const dateStr = `${year}-${monthStr}-${dayPadded}`;
-    promises.push(loadDataByGranularity("day", year, dateStr));
+    promises.push(
+      loadDataByGranularity("day", year, dateStr).then(data => ({
+        date: dateStr,
+        data: data || []
+      }))
+    );
   }
 
   // 并发加载该月所有天
   const results = await Promise.allSettled(promises);
-  
-  // 收集成功的数据
-  const allRows = [];
+
+  // 收集成功的数据，保持 { date, data } 格式
   results.forEach(res => {
-    if (res.status === 'fulfilled' && res.value && res.value.length) {
-      allRows.push(...res.value);
+    if (res.status === 'fulfilled' && res.value && res.value.data && res.value.data.length > 0) {
+      dayEntries.push(res.value);
     }
   });
 
-  currentMonthDailyData.value = allRows;
+  currentMonthDailyData.value = dayEntries;
   isMonthDetailLoading.value = false;
-  console.log(`[MonthView] ${monthNum}月 详情数据加载完成，共 ${allRows.length} 条记录`);
+  console.log(`[MonthView] ${monthNum}月 详情数据加载完成，共 ${dayEntries.length} 天数据`);
 }
 
 // 监听月份切换
@@ -676,9 +706,11 @@ async function initMapData() {
 
 // 在 watch(currentYear) 或 onMounted 中调用
 // 建议放在 loadMonthlyAggregatedData 内部或并行调用
-watch(() => props.currentYear, () => {
-  initMapData(); // 确保地图已加载
-  loadMonthlyAggregatedData();
+watch(() => props.currentYear, async () => {
+  await initMapData(); // 确保地图已加载
+  await loadMonthlyAggregatedData();
+  // 初始化时加载当前选中月份的详情数据
+  await loadMonthDetail(currentMonth.value);
 }, { immediate: true });
 
 
