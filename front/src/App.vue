@@ -50,6 +50,7 @@
             :map-mode="mapMode"
             @select-metric="metric = $event"
             @toggle-map-mode="mapMode = $event"
+            @reset-region="selectedRegion = ''"
           />
           <section class="layout">
             <div class="pane map-pane">
@@ -86,7 +87,7 @@
                 :selected-name="selectedRegion"
                 @select="handleMapSelect"
               />
-              <TypeMap v-else :items="typeMapData" />
+              <TypeMap v-else :items="typeMapData" :selected-name="selectedRegion" />
             </div>
             <div class="pane side-pane">
               <LevelBar :levels="levelStats" />
@@ -176,6 +177,7 @@
           :map-mode="mapMode"
           @select-metric="metric = $event"
           @toggle-map-mode="mapMode = $event"
+          @reset-region="selectedRegion = ''"
         />
         <section class="story-hero">
           <div class="story-visual">
@@ -215,9 +217,22 @@
           <div class="section-badge">类型分析</div>
           <div class="section-meta">类型地图 · 聚类散点 · 类型演化</div>
         </div>
+
+        <ControlPanel
+          class="pane"
+          :date="currentDate"
+          :region="selectedRegion || '全国'"
+          :rows="dayData"
+          :metric="metric"
+          :map-mode="mapMode"
+          @select-metric="metric = $event"
+          @toggle-map-mode="mapMode = $event"
+          @reset-region="selectedRegion = ''"
+        />
+
         <section class="layout secondary">
           <div class="pane map-pane">
-            <TypeMap :items="typeMapData" />
+            <TypeMap :items="typeMapData" :selected-name="selectedRegion" />
           </div>
           <div class="pane">
             <TypeScatter :points="typeScatter" @select="handleTypeSelect" />
@@ -359,8 +374,8 @@ const monthViewYear = ref("2013");
 const monthViewMetric = ref("pm25");
 
 // 新增年份相关变量
-const currentYear = ref("2016");
-const availableYears = ref(["2016"]);
+const currentYear = ref("2013");
+const availableYears = ref(["2013"]);
 
 
 

@@ -1,9 +1,20 @@
 <template>
   <div class="panel">
     <div class="panel-head">
-      <div class="date">{{ date || "加载中" }}</div>
-      <div class="location">{{ region || "全国均值" }}</div>
-    </div>
+  <div class="date">{{ date || "加载中" }}</div>
+
+  <div class="location-group">
+    <div class="location">{{ region || "全国均值" }}</div>
+    <button 
+      v-if="showReset" 
+      class="reset-btn" 
+      @click="$emit('reset-region')"
+      title="还原为默认值"
+    >
+      重置
+    </button>
+  </div>
+  </div>
     <div class="main-row">
       <div class="aqi-block">
         <div class="label">AQI</div>
@@ -55,7 +66,7 @@ const props = defineProps({
   mapMode: { type: String, default: "pollution" },
 });
 
-defineEmits(["select-metric", "toggle-map-mode"]);
+defineEmits(["select-metric", "toggle-map-mode","reset-region"]);
 
 const pollutantList = [
   { key: "pm25", label: "PM2.5" },
@@ -74,6 +85,12 @@ const weatherList = computed(() => [
   { key: "rh", icon: "H", value: stats.value.rh ? `${stats.value.rh} %` : "-" },
   { key: "psfc", icon: "P", value: stats.value.psfc ? `${stats.value.psfc} Pa` : "-" },
 ]);
+
+// 【新增】判断是否显示重置按钮
+const showReset = computed(() => {
+  // 当 region 存在且不等于默认值时显示
+  return props.region && props.region !== '全国' && props.region !== '全国均值';
+});
 
 function aggregateStats(rows) {
   const sums = {};
@@ -246,6 +263,21 @@ function formatVal(v) {
   justify-content: space-between;
   margin-top: 4px;
   font-size: 12px;
+}
+
+.reset-btn {
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid rgba(47, 126, 87, 0.3);
+  color: #2f7e57;
+  background: rgba(47, 126, 87, 0.05);
+  border-radius: 99px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.reset-btn:hover {
+  background: rgba(47, 126, 87, 0.15);
+  border-color: #2f7e57;
 }
 
 .actions {

@@ -57,15 +57,17 @@ const option = computed(() => {
   const data = sourceData.map((d) => {
     const type = d.type || "未知";
     const color = colors[type] || "#e5e7eb";
+    const isSelected = d.name === props.selectedName;
     return {
       name: d.name,
       value: 1,
       type,
       primary: (d.primary || "-").toUpperCase?.() || "-",
       itemStyle: {
-        areaColor: color,
-        color,
-        borderColor: "#d1d5db",
+        areaColor: isSelected ? 'rgba(59, 130, 246, 0.3)' : color, // 选中区域半透明蓝色
+        color: isSelected ? 'rgba(59, 130, 246, 0.3)' : color,
+        borderColor: isSelected ? "#3b82f6" : "#d1d5db", // 选中区域蓝色边框
+        borderWidth: isSelected ? 2 : 1,
       },
     };
   });
@@ -88,6 +90,18 @@ const option = computed(() => {
         roam: true,
         emphasis: { label: { show: false } },
         zoom: 1.05,
+        selectedMode: "single",
+        // 绑定 props.selectedName，让地图初始化时自动高亮对应的区域
+        selected: props.selectedName ? { [props.selectedName]: true } : {},
+        select: {
+          itemStyle: {
+            borderColor: "#1f2937", // 深色边框
+            borderWidth: 3,         // 加粗
+            shadowColor: "rgba(0, 0, 0, 0.5)",
+            shadowBlur: 10,
+          },
+          label: { show: false },   // 选中时不强制显示文字
+        },
         itemStyle: {
           borderColor: "rgba(31,41,55,0.16)",
           borderWidth: 1,

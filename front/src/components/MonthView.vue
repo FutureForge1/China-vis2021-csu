@@ -28,6 +28,18 @@
       </div>
     </div>
 
+    <ControlPanel
+      class="pane"
+      :date="`${currentYear}-${String(currentMonth).padStart(2, '0')}`"
+      :region="selectedRegion || '全国'"
+      :rows="currentMonthDailyData"
+      :metric="metric"
+      :map-mode="mapMode"
+      @select-metric="$emit('update:metric', $event)"
+      @toggle-map-mode="mapMode = $event"
+      @reset-region="$emit('update:region', '')"
+    />
+
     <!-- 第一行：地图和月度统计 -->
     <section class="layout">
       <div class="pane map-pane">
@@ -443,16 +455,19 @@ const typeMapData = computed(() => {
 const monthLevelStats = computed(() => {
   // 如果选中了具体城市 (从地图点击)
   if (selectedCity.value) {
-    // 逻辑简化：直接从当月已加载的日数据中找这个城市
-    // 注意：regionIndex 中的名字通常是 "北京市"，数据中可能是 "北京" 或 "北京市"，需注意匹配
-    // 建议使用 includes 或 normalize
-    const target = selectedCity.value; 
+    const target = selectedCity.value;
 
-    // 过滤出该城市的 28-31 条日数据
-    const cityDays = currentMonthDailyData.value.filter(r => 
-      (r.city && r.city.includes(target)) || (r.province && r.province.includes(target))
-    );
-    
+    // 从所有天的日数据中提取该城市的数据
+    const cityDays = [];
+    for (const dayEntry of currentMonthDailyData.value) {
+      // dayEntry.data 是该天所有城市的数据数组
+      const cityDataForDay = dayEntry.data.filter(r =>
+        (r.city && r.city.includes(target)) ||
+        (r.province && r.province.includes(target))
+      );
+      cityDays.push(...cityDataForDay);
+    }
+
     // 统计这 ~30 天的等级分布
     return classifyLevels(cityDays, props.metric);
   } 
@@ -556,7 +571,14 @@ const monthlyRings = computed(() => {
 
 // 13. 风向玫瑰 (WindCompass) -> 使用日详情数据 (聚合数据只有u/v均值，无法画出分布)
 const monthWindRose = computed(() => {
-  return computeWindRose(currentMonthDailyData.value);
+  // 将所有天的所有城市数据扁平化
+  const allDayData = [];
+  for (const dayEntry of currentMonthDailyData.value) {
+    if (dayEntry.data && dayEntry.data.length > 0) {
+      allDayData.push(...dayEntry.data);
+    }
+  }
+  return computeWindRose(allDayData);
 });
 
 // 14. AQI对比 (AQICompareLine) -> 使用全年聚合数据
