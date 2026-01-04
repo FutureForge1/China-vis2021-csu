@@ -27,6 +27,7 @@ import {
   DataZoomComponent,
   ParallelComponent,
   PolarComponent,
+  CalendarComponent,
 } from "echarts/components";
 import VChart from "vue-echarts";
 
@@ -52,6 +53,7 @@ use([
   DataZoomComponent,
   ParallelComponent,
   PolarComponent,
+  CalendarComponent,
 ]);
 
 // Try to register local GeoJSON map before mounting app so components relying on 'china' exist early.

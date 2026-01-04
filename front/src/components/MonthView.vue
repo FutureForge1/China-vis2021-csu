@@ -206,6 +206,13 @@
         </div>
       </div>
     </section>
+
+    <!-- 第六行：城市污染日历 -->
+    <section class="layout full-width">
+      <div class="pane">
+        <CityPollutionCalendar />
+      </div>
+    </section>
   </div>
 </template>
 
@@ -225,6 +232,7 @@ import CityTypeRibbon from "./CityTypeRibbon.vue";
 import TypeMap from "./TypeMap.vue";
 import MonthlyBoxPlot from "./MonthlyBoxPlot.vue";
 import AQICompareLine from "./AQICompareLine.vue";
+import CityPollutionCalendar from "./CityPollutionCalendar.vue";
 import {
   classifyLevels,
   computeRadialVector,
@@ -765,6 +773,10 @@ watch(() => props.metric, () => {
 
 .tertiary {
   grid-template-columns: 1.5fr 1fr 1fr 1fr;
+}
+
+.full-width {
+  grid-template-columns: 1fr;
 }
 
 .pane {

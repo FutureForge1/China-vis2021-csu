@@ -213,12 +213,12 @@ function stripSuffix(name) {
 
 export async function loadRegionIndex() {
   if (REGION_INDEX) return REGION_INDEX;
-  
+
   const map = new Map();
   try {
     const res = await fetch("/region.json");
     if (!res.ok) throw new Error("Fetch region.json failed");
-    
+
     const list = await res.json();
     console.log(`[DataDebug] region.json 加载成功，原始条目数: ${list.length}`);
 
@@ -234,7 +234,7 @@ export async function loadRegionIndex() {
       for (const raw of candidates) {
         // 拆分 "简体|繁体"
         const parts = String(raw).split("|").map(s => s.trim()).filter(Boolean);
-        
+
         for (const part of parts) {
           // 1. 存入全名 (例如 "北京市", "張家界")
           if (!map.has(part)) {
@@ -245,15 +245,15 @@ export async function loadRegionIndex() {
           // 2. 存入去后缀简称 (例如 "北京", "张家界")
           const shortName = stripSuffix(part);
           if (shortName.length > 1 && shortName !== part) {
-             if (!map.has(shortName)) {
-               map.set(shortName, { lon, lat });
-               keyCount++;
-             }
+            if (!map.has(shortName)) {
+              map.set(shortName, { lon, lat });
+              keyCount++;
+            }
           }
         }
       }
     }
-    
+
     console.log(`[DataDebug] 地图索引构建完成，有效索引键(Keys)总数: ${keyCount}`);
     // 打印几个示例看看索引长什么样
     console.log(`[DataDebug] 索引键示例:`, Array.from(map.keys()).slice(0, 10));
@@ -272,7 +272,7 @@ export async function loadRegionIndex() {
 // ----------------------------------------------------------------------
 export function rowsToScatter(rows, metricKey, regionIndex) {
   if (!regionIndex) return [];
-  
+
   // Debug: 打印输入数据量
   console.log(`[DataDebug] rowsToScatter 开始处理，输入数据行数: ${rows.length}, 指标: ${metricKey}`);
 
@@ -293,7 +293,7 @@ export function rowsToScatter(rows, metricKey, regionIndex) {
 
     if (!Number.isFinite(val)) {
       // 数值无效的不算匹配失败，算数据无效
-      continue; 
+      continue;
     }
 
     // 2. 尝试匹配坐标
@@ -320,10 +320,10 @@ export function rowsToScatter(rows, metricKey, regionIndex) {
 
     if (coord) {
       // 【重要】修复报错的关键：返回对象结构，包含 coord 数组
-      out.push({ 
-        name: row.city || row.county || matchName, 
-        value: val, 
-        coord: [coord.lon, coord.lat] 
+      out.push({
+        name: row.city || row.county || matchName,
+        value: val,
+        coord: [coord.lon, coord.lat]
       });
       successCount++;
     } else {
@@ -349,7 +349,7 @@ export function rowsToScatter(rows, metricKey, regionIndex) {
 export function buildWindVectors(rows, regionIndex, scale = 0.04) {
   const lines = [];
   // 保持原本的采样逻辑
-  const step = 4; 
+  const step = 4;
 
   for (let i = 0; i < rows.length; i += step) {
     const row = rows[i];
@@ -368,9 +368,9 @@ export function buildWindVectors(rows, regionIndex, scale = 0.04) {
     // 只读取 row.u / row.v
     const u = Number(row?.u);
     const v = Number(row?.v);
-    
+
     if (!coord || !Number.isFinite(u) || !Number.isFinite(v)) continue;
-    
+
     const speed = Math.sqrt(u * u + v * v);
     if (speed <= 0) continue;
 
@@ -395,17 +395,17 @@ export function buildWindVectors(rows, regionIndex, scale = 0.04) {
 // 特点：读取 _mean 后缀，不采样(step=1)，只通过 regionIndex 匹配城市
 export function buildMonthlyWindVectors(rows, regionIndex, scale = 0.15) {
   const lines = [];
-  
+
   // 月度数据只有374个城市，不需要采样，直接遍历所有
   for (const row of rows) {
     // 1. 只通过 regionIndex 找坐标（月度聚合数据里没有 lat/lon）
     const name = normalizeRegionName(row.city) || normalizeRegionName(row.province);
     const coord = name ? regionIndex.get(name) : null;
-    
+
     // 2. 读取 _mean 字段
-    const u = Number(row.u_mean ?? row.u); 
+    const u = Number(row.u_mean ?? row.u);
     const v = Number(row.v_mean ?? row.v);
-    
+
     if (!coord || !Number.isFinite(u) || !Number.isFinite(v)) continue;
 
     const speed = Math.sqrt(u * u + v * v);
@@ -474,7 +474,7 @@ export function buildWindFlow(rows, regionIndex, scale = 0.3, density = 3) {
     if (Number.isFinite(lat) && Number.isFinite(lon)) {
       coord = { lon, lat };
       baseName = "Grid";
-    } 
+    }
     // 2. 查表
     else if (regionIndex) {
       baseName = normalizeRegionName(row.city) || normalizeRegionName(row.county) || normalizeRegionName(row.province);
@@ -483,11 +483,11 @@ export function buildWindFlow(rows, regionIndex, scale = 0.3, density = 3) {
 
     const u = Number(row?.u);
     const v = Number(row?.v);
-    
+
     if (!coord || !Number.isFinite(u) || !Number.isFinite(v)) continue;
-    
+
     const speed = Math.sqrt(u * u + v * v);
-    
+
     // 生成流线粒子 (Jitter)
     for (let i = 0; i < Math.max(1, density); i++) {
       const jitter = 0.2; // 网格数据密集，减小 jitter 避免太乱
@@ -542,16 +542,16 @@ export function normalizeProvince(name) {
     "天津": "天津市", "天津市": "天津市",
     "上海": "上海市", "上海市": "上海市",
     "重庆": "重庆市", "重庆市": "重庆市",
-    
+
     "内蒙古": "内蒙古自治区", "内蒙古自治区": "内蒙古自治区",
     "广西": "广西壮族自治区", "广西壮族自治区": "广西壮族自治区",
     "新疆": "新疆维吾尔自治区", "新疆维吾尔自治区": "新疆维吾尔自治区",
     "宁夏": "宁夏回族自治区", "宁夏回族自治区": "宁夏回族自治区",
     "西藏": "西藏自治区", "西藏自治区": "西藏自治区",
-    
+
     "香港": "香港特别行政区", "香港特别行政区": "香港特别行政区", "中国香港": "香港特别行政区",
     "澳门": "澳门特别行政区", "澳门特别行政区": "澳门特别行政区", "中国澳门": "澳门特别行政区",
-    
+
     // 黑龙江如果不特殊处理，去掉“省”后加“省”没问题，但为了保险也加上
     "黑龙江": "黑龙江省", "黑龙江省": "黑龙江省"
   };
@@ -577,10 +577,10 @@ export async function loadOneMonth(yearMonth) {
     const res = await fetch(path);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    
+
     // 注意：你的 json 是一个数组（列表），每一项是一个城市的统计数据
     // 我们不需要做额外处理，直接返回即可
-    return data; 
+    return data;
   } catch (err) {
     console.warn(`[DataDebug] 加载月度聚合数据失败 ${path}:`, err);
     return [];
@@ -626,7 +626,7 @@ export async function loadMonthlyIndex(year) {
   } catch (err) {
     console.warn(`Monthly index missing for ${year}:`, err);
     // 生成默认的月份列表
-    return { months: Array.from({length: 12}, (_, i) => `${year}-${String(i+1).padStart(2, '0')}`) };
+    return { months: Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`) };
   }
 }
 
@@ -1098,7 +1098,7 @@ export function computeTypeByRegion(rows, field = "city", granularity = "day") {
     for (const m of POLLUTANTS) {
       // 【核心修改】使用 getValueFromRow 自动适配字段名 (pm25 vs pm25_mean)
       const v = Number(getValueFromRow(row, m, granularity));
-      
+
       if (Number.isFinite(v) && v > 0) {
         g.sums[m] += v;
       }
@@ -1599,9 +1599,9 @@ export function computeCityMonthStats(dayEntries, cityName, monthFilter) {
 //     const parts = parseDateParts(entry.date);
 //     // 月份过滤逻辑保持不变
 //     if (!parts || (monthFilter && parts.month !== monthFilter)) continue;
-    
+
 //     dates.push(entry.date);
-    
+
 //     // --- 核心修改开始 ---
 //     let data = entry.data;
 
@@ -1628,7 +1628,7 @@ export function computeCityMonthStats(dayEntries, cityName, monthFilter) {
 //     // 后续计算逻辑保持不变
 //     const typed = computeTypeByRegion(data, "city");
 //     const map = new Map(typed.map((t) => [normalizeRegionName(t.name), t.type]));
-    
+
 //     // 对齐数据长度
 //     for (const name of map.keys()) {
 //       if (!perCity.has(name)) perCity.set(name, []);
@@ -1678,14 +1678,14 @@ export function computeCityTypeTrajectory(dayEntries, provinceFilter = null, mon
   for (const entry of dayEntries) {
     const parts = parseDateParts(entry.date);
     if (!parts || (monthFilter && parts.month !== monthFilter)) continue;
-    
+
     dates.push(entry.date);
-    
+
     let data = entry.data;
 
     if (provinceFilter && coreTarget) {
       // 1. 【优先】尝试严格全名匹配
-      const strictMatches = entry.data.filter((r) => 
+      const strictMatches = entry.data.filter((r) =>
         (r?.province === provinceFilter) || (r?.city === provinceFilter)
       );
 
@@ -1697,11 +1697,11 @@ export function computeCityTypeTrajectory(dayEntries, provinceFilter = null, mon
         data = entry.data.filter((r) => {
           const coreP = getCoreName(r?.province);
           const coreC = getCoreName(r?.city);
-          
+
           // 只要省名或市名的核心词与目标匹配（相等或包含）
           return (
-            coreP === coreTarget || 
-            coreC === coreTarget || 
+            coreP === coreTarget ||
+            coreC === coreTarget ||
             (coreC && coreTarget && (coreC.includes(coreTarget) || coreTarget.includes(coreC)))
           );
         });
@@ -1711,7 +1711,7 @@ export function computeCityTypeTrajectory(dayEntries, provinceFilter = null, mon
     // 后续逻辑保持不变
     const typed = computeTypeByRegion(data, "city");
     const map = new Map(typed.map((t) => [normalizeRegionName(t.name), t.type]));
-    
+
     // 对齐数据长度
     for (const name of map.keys()) {
       if (!perCity.has(name)) perCity.set(name, []);
@@ -1927,7 +1927,7 @@ export function computeLevelTimelineByGranularity(dataEntries, field, granularit
     for (const row of entry.data) {
       // 修改这里：使用 getValueFromRow 自动处理 _mean 后缀
       const v = Number(getValueFromRow(row, field, granularity) ?? 0);
-      
+
       if (Number.isNaN(v)) continue;
       const idx = buckets.findIndex((b) => v >= b.min && v < b.max);
       if (idx >= 0) counts[idx] += 1;
@@ -1959,11 +1959,11 @@ export async function loadCityMap() {
     const res = await fetch("/china_city.json"); // 确保文件在 public 目录下
     if (!res.ok) throw new Error("City GeoJSON not found");
     const geoJson = await res.json();
-    
+
     // 注册地图
     echarts.registerMap('china_cities', geoJson);
     console.log('china_city.json注册成功');
-    
+
     return geoJson;
   } catch (err) {
     console.error("Failed to load city map:", err);
@@ -1983,7 +1983,7 @@ export function matchGeoName(dataName, geoNames) {
 
   // 2. 预处理：去掉空白
   const cleanData = dataName.trim();
-  
+
   // 3. 模糊匹配策略
   // 策略：比较“去后缀”后的核心词
   // 常见后缀：市, 地区, 自治州, 盟
@@ -2012,12 +2012,12 @@ export function computeMonthlyBoxDataForView(monthlyEntries, metric = "pm25") {
   for (const entry of monthlyEntries) {
     if (!entry.data) continue;
     const m = entry.month;
-    
+
     // 遍历该月下的所有城市数据
     for (const row of entry.data) {
       // 优先取 _mean 后缀 (月度聚合字段)，如果没有则取原字段
       const value = Number(row[`${metric}_mean`] ?? row[metric]);
-      
+
       // 只要数值有效，就作为一条原始记录返回
       if (Number.isFinite(value)) {
         result.push({
@@ -2030,4 +2030,195 @@ export function computeMonthlyBoxDataForView(monthlyEntries, metric = "pm25") {
   }
 
   return result;
+}
+
+// ==========================================
+// 【新增】: 城市污染日历热力图相关函数
+// ==========================================
+
+/**
+ * 计算单项污染物的 IAQI（个体空气质量分指数）
+ * @param {number} value - 污染物浓度值
+ * @param {string} pollutant - 污染物名称 (pm25, pm10, so2, no2, co, o3)
+ * @returns {number} IAQI 值
+ */
+function calculateIAQI(value, pollutant) {
+  const breakpoints = AQI_BREAKPOINTS[pollutant];
+  if (!breakpoints || !Number.isFinite(value) || value < 0) return 0;
+
+  for (const bp of breakpoints) {
+    if (value >= bp.bpLo && value < bp.bpHi) {
+      // 线性插值公式
+      return ((bp.iaqiHi - bp.iaqiLo) / (bp.bpHi - bp.bpLo)) * (value - bp.bpLo) + bp.iaqiLo;
+    }
+  }
+  // 超出最大范围
+  return 500;
+}
+
+/**
+ * 根据各污染物浓度计算总体 AQI
+ * @param {Object} data - 包含 pm25, pm10, so2, no2, co, o3 的对象
+ * @returns {Object} { aqi, primaryPollutant, level, color }
+ */
+export function calculateAQI(data) {
+  const pollutants = ["pm25", "pm10", "so2", "no2", "co", "o3"];
+  const iaqiValues = {};
+
+  for (const p of pollutants) {
+    const val = Number(data[p] ?? 0);
+    iaqiValues[p] = calculateIAQI(val, p);
+  }
+
+  // AQI 是各 IAQI 的最大值
+  let maxIAQI = 0;
+  let primaryPollutant = "";
+  for (const [p, iaqi] of Object.entries(iaqiValues)) {
+    if (iaqi > maxIAQI) {
+      maxIAQI = iaqi;
+      primaryPollutant = p.toUpperCase();
+    }
+  }
+
+  const aqi = Math.round(maxIAQI);
+
+  // 确定等级和颜色
+  let level = "优";
+  let color = "#22c55e";
+  if (aqi > 300) { level = "严重"; color = "#7f1d1d"; }
+  else if (aqi > 200) { level = "重度"; color = "#ef4444"; }
+  else if (aqi > 150) { level = "中度"; color = "#f97316"; }
+  else if (aqi > 100) { level = "轻度"; color = "#facc15"; }
+  else if (aqi > 50) { level = "良"; color = "#a3e635"; }
+
+  return { aqi, primaryPollutant, level, color };
+}
+
+/**
+ * 从年度月数据中提取省份-城市映射（二级分组）
+ * @param {string} year - 年份
+ * @returns {Promise<Object>} { "北京市": ["北京市"], "河北省": ["石家庄市", ...], ... }
+ */
+export async function getCitiesByProvince(year) {
+  const provinceMap = {};
+
+  try {
+    // 加载一个月的数据来获取城市列表（月数据包含所有城市）
+    const monthlyData = await loadOneMonth(`${year}-01`);
+
+    if (!monthlyData || monthlyData.length === 0) {
+      // 尝试加载其他月份
+      for (let m = 2; m <= 12; m++) {
+        const data = await loadOneMonth(`${year}-${String(m).padStart(2, '0')}`);
+        if (data && data.length > 0) {
+          for (const row of data) {
+            const province = row.province || "未知";
+            const city = row.city || row.province;
+            if (!provinceMap[province]) {
+              provinceMap[province] = new Set();
+            }
+            if (city) provinceMap[province].add(city);
+          }
+          break;
+        }
+      }
+    } else {
+      for (const row of monthlyData) {
+        const province = row.province || "未知";
+        const city = row.city || row.province;
+        if (!provinceMap[province]) {
+          provinceMap[province] = new Set();
+        }
+        if (city) provinceMap[province].add(city);
+      }
+    }
+
+    // 转换 Set 为数组并排序
+    const result = {};
+    const sortedProvinces = Object.keys(provinceMap).sort();
+    for (const province of sortedProvinces) {
+      result[province] = Array.from(provinceMap[province]).sort();
+    }
+
+    return result;
+  } catch (err) {
+    console.error("[getCitiesByProvince] 获取城市列表失败:", err);
+    return {};
+  }
+}
+
+/**
+ * 加载指定城市全年的日数据，用于日历热力图
+ * @param {string} year - 年份
+ * @param {string} cityName - 城市名
+ * @returns {Promise<Array>} [{ date, pm25, pm10, so2, no2, co, o3, aqi, level, color }, ...]
+ */
+export async function computeCityYearCalendar(year, cityName) {
+  const result = [];
+
+  try {
+    // 加载年度索引获取所有日期
+    const index = await loadIndex(year);
+    const days = index.days || [];
+
+    console.log(`[computeCityYearCalendar] 开始加载 ${year} 年 ${cityName} 的日历数据，共 ${days.length} 天`);
+
+    // 为了性能，批量加载而不是逐个等待
+    // 由于日数据文件可能很大，我们分批处理
+    const batchSize = 30; // 每批加载30天
+
+    for (let i = 0; i < days.length; i += batchSize) {
+      const batchDays = days.slice(i, i + batchSize);
+      const batchPromises = batchDays.map(async (dateStr) => {
+        try {
+          const dayData = await loadOneDay(dateStr);
+
+          // 查找指定城市的数据
+          const cityRow = dayData.find(row => {
+            const rowCity = row.city || row.province;
+            return rowCity === cityName ||
+              rowCity?.includes(cityName) ||
+              cityName?.includes(rowCity?.replace(/市|县|区$/, ''));
+          });
+
+          if (cityRow) {
+            const pm25 = Number(cityRow.pm25 ?? 0);
+            const pm10 = Number(cityRow.pm10 ?? 0);
+            const so2 = Number(cityRow.so2 ?? 0);
+            const no2 = Number(cityRow.no2 ?? 0);
+            const co = Number(cityRow.co ?? 0);
+            const o3 = Number(cityRow.o3 ?? 0);
+
+            const aqiInfo = calculateAQI({ pm25, pm10, so2, no2, co, o3 });
+
+            return {
+              date: dateStr,
+              pm25: pm25.toFixed(1),
+              pm10: pm10.toFixed(1),
+              so2: so2.toFixed(1),
+              no2: no2.toFixed(1),
+              co: co.toFixed(2),
+              o3: o3.toFixed(1),
+              aqi: aqiInfo.aqi,
+              level: aqiInfo.level,
+              color: aqiInfo.color,
+              primaryPollutant: aqiInfo.primaryPollutant
+            };
+          }
+          return null;
+        } catch (e) {
+          return null;
+        }
+      });
+
+      const batchResults = await Promise.all(batchPromises);
+      result.push(...batchResults.filter(r => r !== null));
+    }
+
+    console.log(`[computeCityYearCalendar] 成功加载 ${result.length} 天数据`);
+    return result;
+  } catch (err) {
+    console.error("[computeCityYearCalendar] 加载失败:", err);
+    return [];
+  }
 }
