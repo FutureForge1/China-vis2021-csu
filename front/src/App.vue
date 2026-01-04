@@ -305,6 +305,8 @@
           <div class="section-meta">补充</div>
         </div>
 
+
+
         <!-- 时间选择控件 -->
         <div class="monthly-controls">
           <div class="time-selector">
@@ -344,42 +346,49 @@
           @toggle-map-mode="mapMode = $event"
         />
 
+        <!-- 在 ControlPanel 组件后添加 -->
         <section class="layout">
-<!--          <div class="pane map-pane">-->
-<!--            <div class="map-switch">-->
-<!--              <button :class="{ active: mapMode === 'pollution' }" @click="mapMode = 'pollution'">污染</button>-->
-<!--              <button :class="{ active: mapMode === 'weather' }" @click="mapMode = 'weather'">气象</button>-->
-<!--              <button :class="{ active: mapMode === 'type' }" @click="mapMode = 'type'">类型</button>-->
-<!--            </div>-->
+          <div class="pane map-pane">
+            <div class="map-switch">
+              <button :class="{ active: mapMode === 'pollution' }" @click="mapMode = 'pollution'">污染</button>
+              <button :class="{ active: mapMode === 'weather' }" @click="mapMode = 'weather'">气象</button>
+              <button :class="{ active: mapMode === 'type' }" @click="mapMode = 'type'">类型</button>
+              <div v-if="mapMode === 'weather'" class="weather-toggle">
+                <button :class="{ active: weatherMetric === 'wind' }" @click="weatherMetric = 'wind'">风速</button>
+                <button :class="{ active: weatherMetric === 'temp' }" @click="weatherMetric = 'temp'">气温</button>
+                <button :class="{ active: weatherMetric === 'rh' }" @click="weatherMetric = 'rh'">湿度</button>
+                <button :class="{ active: weatherMetric === 'psfc' }" @click="weatherMetric = 'psfc'">气压</button>
+              </div>
+            </div>
 
-<!--            <MapPanel-->
-<!--              v-if="mapMode === 'pollution'"-->
-<!--              :data="monthlyMapSeries"-->
-<!--              :metric="monthlyMetric"-->
-<!--              :title="`${currentMonthlyPeriod} ${monthlyMetric.toUpperCase()} 月均分布`"-->
-<!--              :selected-name="selectedRegion"-->
-<!--              @select="handleMapSelect"-->
-<!--            />-->
+            <MapPanel
+              v-if="mapMode === 'pollution'"
+              :data="monthlyMapSeries"
+              :metric="monthlyMetric"
+              :title="`${currentMonthlyPeriod} ${monthlyMetric.toUpperCase()} 月均分布`"
+              :selected-name="selectedRegion"
+              @select="handleMapSelect"
+            />
 
-<!--            <MapPanel-->
-<!--              v-else-if="mapMode === 'weather'"-->
-<!--              :data="monthlyWeatherMapSeries"-->
-<!--              :metric="weatherMetricLabel"-->
-<!--              :title="`${currentMonthlyPeriod} ${weatherMetricLabel} 月均分布`"-->
-<!--              mode="weather"-->
-<!--              :selected-name="selectedRegion"-->
-<!--              @select="handleMapSelect"-->
-<!--            />-->
+            <MapPanel
+              v-else-if="mapMode === 'weather'"
+              :data="monthlyWeatherMapSeries"
+              :metric="weatherMetricLabel"
+              :title="`${currentMonthlyPeriod} ${weatherMetricLabel} 月均分布`"
+              mode="weather"
+              :selected-name="selectedRegion"
+              @select="handleMapSelect"
+            />
 
-<!--            <TypeMap v-else :items="monthlyTypeMapData" />-->
-<!--          </div>-->
+            <TypeMap v-else :items="monthlyTypeMapData" :selected-name="selectedRegion" />
+          </div>
 
           <div class="pane side-pane">
             <div class="stats-panel">
-              <h3>月度统计</h3>
+              <h3>月度统计 - {{ selectedRegion || '全国' }}</h3>
               <div class="stat-item">
                 <span class="stat-label">数据点数：</span>
-                <span class="stat-value">{{ monthlyData.length }}</span>
+                <span class="stat-value">{{ filteredMonthlyData.length }}</span>
               </div>
               <div class="stat-item">
                 <span class="stat-label">{{ monthlyMetric.toUpperCase() }} 均值：</span>
@@ -392,6 +401,9 @@
               <div class="stat-item">
                 <span class="stat-label">最低值：</span>
                 <span class="stat-value">{{ monthlyMinValue.toFixed(2) }}</span>
+              </div>
+              <div class="stat-item" v-if="selectedRegion">
+                <button @click="selectedRegion = ''">重置为全国视图</button>
               </div>
             </div>
 
@@ -431,24 +443,25 @@
 <!--          </div>-->
 <!--        </section>-->
 
+        <!-- 替换现有的月度分析section -->
         <section class="layout secondary">
           <div class="pane">
-            <h3>污染物径向图</h3>
+            <h3>污染物径向图 - {{ selectedRegion || '全国' }}</h3>
             <RadialPollutant :data="monthlyRadialVector" />
           </div>
           <div class="pane">
-            <h3>相关性分析</h3>
+            <h3>相关性分析 - {{ selectedRegion || '全国' }}</h3>
             <CorrHeatmap :matrix="monthlyCorrMatrix" />
           </div>
         </section>
 
         <section class="layout secondary">
           <div class="pane">
-            <h3>城市排名</h3>
+            <h3>城市排名 - {{ selectedRegion || '全国' }}</h3>
             <AQIRanking :items="monthlyAQIRanking" @select="handleRankingSelect" />
           </div>
           <div class="pane">
-            <h3>平行坐标</h3>
+            <h3>平行坐标 - {{ selectedRegion || '全国' }}</h3>
             <ParallelAQI :rows="monthlyParallelRows" @select="handleParallelSelect" />
           </div>
         </section>
@@ -1027,7 +1040,8 @@ import {
   loadMonthlyData,
   getAvailableYears,
   getAvailableMonths,
-  getAvailableMonthlyPeriods
+  getAvailableMonthlyPeriods,
+  computeAQIRankingMonthly
 } from "./utils/dataLoader";
 
 // 月度分析相关状态
@@ -1041,15 +1055,40 @@ const monthlyData = ref([]);
 const monthlyAvailableYears = getAvailableYears();
 const availableMonths = getAvailableMonths();
 
-// 计算属性
-const currentMonthlyPeriod = computed(() => `${selectedYear.value}-${selectedMonth.value}`);
-const monthlyMapSeries = computed(() => aggregateMap(monthlyData.value, monthlyMetric.value));
-const monthlyWeatherMapSeries = computed(() => aggregateMap(monthlyData.value, weatherMetric.value));
+// 根据选中区域过滤月度数据
+const filteredMonthlyData = computed(() => {
+  if (!selectedRegion.value) {
+    return monthlyData.value;
+  }
 
-// 月度统计信息
+  // 使用标准化省份名称进行匹配
+  const target = normalizeProvince(selectedRegion.value);
+  return monthlyData.value.filter(row => {
+    const province = normalizeProvince(row.province);
+    const city = normalizeProvince(row.city);
+    return province === target || city === target;
+  });
+});
+
+// 计算属性 - 使用过滤后的数据
+const currentMonthlyPeriod = computed(() => `${selectedYear.value}-${selectedMonth.value}`);
+const monthlyMapSeries = computed(() => aggregateMap(filteredMonthlyData.value, monthlyMetric.value, "month"));
+const monthlyWeatherMapSeries = computed(() => aggregateMap(filteredMonthlyData.value, weatherMetric.value, "month"));
+
+// 月度类型地图数据
+const monthlyTypeMapData = computed(() =>
+  computeTypeByRegion(filteredMonthlyData.value, "province", "month").map((item) => ({
+    ...item,
+    name: normalizeProvince(item.name),
+    type: item.type || "未知",
+    primary: item.primary || "-",
+  }))
+);
+
+// 月度统计信息 - 使用过滤后的数据
 const monthlyStats = computed(() => {
   const metric = monthlyMetric.value;
-  const values = monthlyData.value
+  const values = filteredMonthlyData.value
     .map(row => {
       // 尝试多种可能的字段名
       const val = row[metric] ||
@@ -1057,11 +1096,11 @@ const monthlyStats = computed(() => {
                   (metric === 'aqi' ? (row[metric] || row['aqi_mean']) : 0);
       return Number(val);
     })
-    .filter(v => !isNaN(v) && v !== 0); // 过滤掉0值，因为0可能是缺失值
+    .filter(v => !isNaN(v) && v !== 0);
 
   if (values.length === 0) {
     console.warn(`月度数据中未找到指标 ${metric} 的有效值，数据示例:`,
-      monthlyData.value.slice(0, 3));
+      filteredMonthlyData.value.slice(0, 3));
   }
 
   return {
@@ -1076,15 +1115,18 @@ const monthlyAvgValue = computed(() => monthlyStats.value.avg);
 const monthlyMaxValue = computed(() => monthlyStats.value.max);
 const monthlyMinValue = computed(() => monthlyStats.value.min);
 
-// 月度雷达图数据
+// 月度雷达图数据 - 使用过滤后的数据
 const monthlyRadarData = computed(() => {
   const pollutants = ["pm25", "pm10", "so2", "no2", "co", "o3"];
   const averages = {};
 
   pollutants.forEach(pollutant => {
-    const values = monthlyData.value
-      .map(row => Number(row[pollutant]))
-      .filter(v => !isNaN(v));
+    const values = filteredMonthlyData.value
+      .map(row => {
+        const val = row[pollutant] || row[`${pollutant}_mean`] || 0;
+        return Number(val);
+      })
+      .filter(v => !isNaN(v) && v > 0);
     averages[pollutant] = values.length ? values.reduce((a, b) => a + b) / values.length : 0;
   });
 
@@ -1095,6 +1137,76 @@ const monthlyRadarData = computed(() => {
     })),
     values: pollutants.map(p => averages[p])
   };
+});
+
+// 其他月度分析计算属性 - 使用过滤后的数据
+const monthlyLevelStats = computed(() =>
+  classifyLevels(filteredMonthlyData.value, monthlyMetric.value)
+);
+
+const monthlyRadialVector = computed(() =>
+  computeRadialVector(filteredMonthlyData.value)
+);
+
+const monthlyCorrMatrix = computed(() =>
+  computeCorrMatrix(
+    [{ data: filteredMonthlyData.value }],
+    ["pm25", "pm10", "so2", "no2", "o3"],
+    ["temp", "rh", "psfc"]
+  )
+);
+
+const monthlyAQIRanking = computed(() =>
+  computeAQIRankingMonthly(filteredMonthlyData.value, "city", 15)
+);
+
+const monthlyParallelRows = computed(() =>
+  buildParallelData(filteredMonthlyData.value, "city", 30)
+);
+
+const monthlyCityValues = computed(() => {
+  if (!selectedRegion.value && !filteredMonthlyData.value.length) return {};
+  const target = normalizeProvince(selectedRegion.value);
+  const row = filteredMonthlyData.value.find(r =>
+    normalizeProvince(r.city) === target ||
+    normalizeProvince(r.province) === target
+  ) || filteredMonthlyData.value[0] || {};
+
+  return {
+    pm25: row.pm25,
+    pm10: row.pm10,
+    so2: row.so2,
+    no2: row.no2,
+    co: row.co,
+    o3: row.o3
+  };
+});
+
+const monthlyCityStats = computed(() =>
+  computeCityMonthStats([{ data: filteredMonthlyData.value }], selectedRegion.value, parseInt(selectedMonth.value))
+);
+
+const monthlyTypeRibbon = computed(() =>
+  computeCityTypeTrajectory([{ data: filteredMonthlyData.value }], selectedRegion.value, parseInt(selectedMonth.value))
+);
+
+const monthlyPollutantShares = computed(() => {
+  const pollutants = ["pm25", "pm10", "so2", "no2", "co", "o3"];
+  const totals = {};
+  let total = 0;
+
+  pollutants.forEach(p => {
+    const values = filteredMonthlyData.value
+      .map(row => Number(row[p]))
+      .filter(v => !isNaN(v) && v > 0);
+    totals[p] = values.length ? values.reduce((a, b) => a + b) / values.length : 0;
+    total += totals[p];
+  });
+
+  return pollutants.map(p => ({
+    name: p.toUpperCase(),
+    value: total > 0 ? (totals[p] / total) * 100 : 0
+  }));
 });
 
 // 事件处理
@@ -1117,106 +1229,8 @@ async function loadCurrentMonthlyData() {
   }
 }
 
-// 路由切换时加载数据
-watch(() => route.name, async (newName) => {
-  if (newName === "monthly") {
-    await loadCurrentMonthlyData();
-  }
-});
-
-// 初始化时如果是月度页面则加载数据
-onMounted(async () => {
-  if (route.name === "monthly") {
-    await loadCurrentMonthlyData();
-  }
-});
-
-
-// 月度分析计算属性
-const monthlyLevelStats = computed(() =>
-  classifyLevels(monthlyData.value, monthlyMetric.value)
-);
-
-const monthlyRadialVector = computed(() =>
-  computeRadialVector(monthlyData.value)
-);
-
-// 月度趋势数据（假设有跨月数据）
-const monthlyTrendSeries = computed(() => {
-  // 这里需要根据实际数据结构调整
-  if (!multiYearMonthlyData.value.length) return [];
-  return multiYearMonthlyData.value.map(item => ({
-    date: item.period,
-    value: item.avgValue || 0
-  }));
-});
-
-const monthlyTrendDates = computed(() =>
-  monthlyTrendSeries.value.map(item => item.date)
-);
-
-const monthlyCorrMatrix = computed(() =>
-  computeCorrMatrix(
-    [{ data: monthlyData.value }], // 包装成与allDays相同的结构
-    ["pm25", "pm10", "so2", "no2", "o3"],
-    ["temp", "rh", "psfc"]
-  )
-);
-
-const monthlyAQIRanking = computed(() =>
-  computeAQIRanking(monthlyData.value, "province", 15)
-);
-
-const monthlyParallelRows = computed(() =>
-  buildParallelData(monthlyData.value, "province", 30)
-);
-
-const monthlyCityValues = computed(() => {
-  if (!selectedRegion.value && !monthlyData.value.length) return {};
-  const target = normalizeProvince(selectedRegion.value);
-  const row = monthlyData.value.find(r =>
-    normalizeProvince(r.city) === target ||
-    normalizeProvince(r.province) === target
-  ) || monthlyData.value[0] || {};
-
-  return {
-    pm25: row.pm25,
-    pm10: row.pm10,
-    so2: row.so2,
-    no2: row.no2,
-    co: row.co,
-    o3: row.o3
-  };
-});
-
-const monthlyCityStats = computed(() =>
-  computeCityMonthStats([{ data: monthlyData.value }], selectedRegion.value, parseInt(selectedMonth.value))
-);
-
-const monthlyTypeRibbon = computed(() =>
-  computeCityTypeTrajectory([{ data: monthlyData.value }], selectedRegion.value, parseInt(selectedMonth.value))
-);
-
 // 多年度月度数据（需要根据实际数据源调整）
 const multiYearMonthlyData = ref([]);
-const monthlyPollutantShares = computed(() => {
-  const pollutants = ["pm25", "pm10", "so2", "no2", "co", "o3"];
-  const totals = {};
-  let total = 0;
-
-  pollutants.forEach(p => {
-    const values = monthlyData.value
-      .map(row => Number(row[p]))
-      .filter(v => !isNaN(v) && v > 0);
-    totals[p] = values.length ? values.reduce((a, b) => a + b) / values.length : 0;
-    total += totals[p];
-  });
-
-  return pollutants.map(p => ({
-    name: p.toUpperCase(),
-    value: total > 0 ? (totals[p] / total) * 100 : 0
-  }));
-});
 
 // 加载多年度数据
 async function loadMultiYearMonthlyData() {
@@ -1245,6 +1259,80 @@ async function loadMultiYearMonthlyData() {
 
   multiYearMonthlyData.value = allData;
 }
+
+// 月度趋势数据（假设有跨月数据）
+const monthlyTrendSeries = computed(() => {
+  if (!multiYearMonthlyData.value.length) return [];
+  return multiYearMonthlyData.value.map(item => ({
+    date: item.period,
+    value: item.avgValue || 0
+  }));
+});
+
+const monthlyTrendDates = computed(() =>
+  monthlyTrendSeries.value.map(item => item.date)
+);
+
+// 路由切换时加载数据
+watch(() => route.name, async (newName) => {
+  if (newName === "monthly") {
+    await loadCurrentMonthlyData();
+  }
+});
+
+// 初始化时如果是月度页面则加载数据
+onMounted(async () => {
+  if (route.name === "monthly") {
+    await loadCurrentMonthlyData();
+  }
+});
+
+const nationalRange = computed(() => {
+  if (!monthlyData.value.length) return { min: 0, max: 100 };
+
+  const metric = monthlyMetric.value;
+  const values = monthlyData.value
+    .map(row => {
+      const val = row[metric] || row[`${metric}_mean`] || 0;
+      return Number(val);
+    })
+    .filter(v => !isNaN(v) && v > 0);
+
+  if (values.length === 0) return { min: 0, max: 100 };
+
+  return {
+    min: Math.min(...values),
+    max: Math.max(...values)
+  };
+});
+
+// 创建固定范围的数据（保持全国范围，不随选中过滤）
+const fixedRangeMapData = computed(() => {
+  const nationalMin = nationalRange.value.min;
+  const nationalMax = nationalRange.value.max;
+
+  // 如果当前有选中区域，我们需要创建一个特殊的数据集
+  if (selectedRegion.value && filteredMonthlyData.value.length > 0) {
+    // 保持全国数据的范围，但只显示选中区域的数据
+    const filteredData = filteredMonthlyData.value.map(item => {
+      // 计算该数据项在固定范围内的相对位置
+      const value = Number(item[monthlyMetric.value] || item[`${monthlyMetric.value}_mean`] || 0);
+      return {
+        ...item,
+        // 保持原始值，但颜色映射会使用固定范围
+        value: value
+      };
+    });
+
+    return filteredData;
+  }
+
+  // 没有选中区域时，使用全国数据
+  return monthlyData.value.map(item => ({
+    ...item,
+    value: Number(item[monthlyMetric.value] || item[`${monthlyMetric.value}_mean`] || 0)
+  }));
+});
 
 </script>
 
@@ -1389,7 +1477,7 @@ h1 {
 
 .layout {
   display: grid;
-  grid-template-columns: 2fr 1fr;
+  grid-template-columns: 2.5fr 1.5fr;
   gap: 16px;
   flex: 1;
   min-height: 0;
@@ -1780,5 +1868,6 @@ h1 {
   height: 300px;
   margin: 15px 0;
 }
+
 
 </style>

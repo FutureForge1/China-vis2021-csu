@@ -2338,3 +2338,44 @@ function calculateStd(values) {
   const avgSquareDiff = squareDiffs.reduce((a, b) => a + b) / squareDiffs.length;
   return Math.sqrt(avgSquareDiff);
 }
+
+
+// // 月度数据专用AQI排名计算函数
+// export function computeAQIRankingMonthly(rows, field = "province", topN = 15) {
+//   const groups = new Map();
+//   for (const row of rows) {
+//     const key = row?.[field] || row?.province || row?.city;
+//     if (!key) continue;
+//     const { aqi, primaryPollutant } = computeAQIMonthly(row);
+//     if (!Number.isFinite(aqi)) continue;
+//     if (!groups.has(key)) {
+//       groups.set(key, {
+//         sumAQI: 0,
+//         count: 0,
+//         primaryCounts: new Map(),
+//       });
+//     }
+//     const g = groups.get(key);
+//     g.sumAQI += aqi;
+//     g.count += 1;
+//     if (primaryPollutant) {
+//       g.primaryCounts.set(primaryPollutant, (g.primaryCounts.get(primaryPollutant) || 0) + 1);
+//     }
+//   }
+//
+//   const items = [];
+//   for (const [name, g] of groups.entries()) {
+//     const avg = g.count ? g.sumAQI / g.count : 0;
+//     let primary = null;
+//     let best = -Infinity;
+//     for (const [p, c] of g.primaryCounts.entries()) {
+//       if (c > best) {
+//         best = c;
+//         primary = p;
+//       }
+//     }
+//     items.push({ name, aqi: Number(avg.toFixed(1)), primaryPollutant: primary });
+//   }
+//
+//   return items.sort((a, b) => b.aqi - a.aqi).slice(0, topN);
+// }
