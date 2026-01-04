@@ -245,10 +245,10 @@ export async function loadRegionIndex() {
           // 2. 存入去后缀简称 (例如 "北京", "张家界")
           const shortName = stripSuffix(part);
           if (shortName.length > 1 && shortName !== part) {
-             if (!map.has(shortName)) {
-               map.set(shortName, { lon, lat });
-               keyCount++;
-             }
+            if (!map.has(shortName)) {
+              map.set(shortName, { lon, lat });
+              keyCount++;
+            }
           }
         }
       }
@@ -626,7 +626,7 @@ export async function loadMonthlyIndex(year) {
   } catch (err) {
     console.warn(`Monthly index missing for ${year}:`, err);
     // 生成默认的月份列表
-    return { months: Array.from({length: 12}, (_, i) => `${year}-${String(i+1).padStart(2, '0')}`) };
+    return { months: Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`) };
   }
 }
 
@@ -2030,6 +2030,197 @@ export function computeMonthlyBoxDataForView(monthlyEntries, metric = "pm25") {
   }
 
   return result;
+}
+
+// ==========================================
+// 【新增】: 城市污染日历热力图相关函数
+// ==========================================
+
+/**
+ * 计算单项污染物的 IAQI（个体空气质量分指数）
+ * @param {number} value - 污染物浓度值
+ * @param {string} pollutant - 污染物名称 (pm25, pm10, so2, no2, co, o3)
+ * @returns {number} IAQI 值
+ */
+function calculateIAQI(value, pollutant) {
+  const breakpoints = AQI_BREAKPOINTS[pollutant];
+  if (!breakpoints || !Number.isFinite(value) || value < 0) return 0;
+
+  for (const bp of breakpoints) {
+    if (value >= bp.bpLo && value < bp.bpHi) {
+      // 线性插值公式
+      return ((bp.iaqiHi - bp.iaqiLo) / (bp.bpHi - bp.bpLo)) * (value - bp.bpLo) + bp.iaqiLo;
+    }
+  }
+  // 超出最大范围
+  return 500;
+}
+
+/**
+ * 根据各污染物浓度计算总体 AQI
+ * @param {Object} data - 包含 pm25, pm10, so2, no2, co, o3 的对象
+ * @returns {Object} { aqi, primaryPollutant, level, color }
+ */
+export function calculateAQI(data) {
+  const pollutants = ["pm25", "pm10", "so2", "no2", "co", "o3"];
+  const iaqiValues = {};
+
+  for (const p of pollutants) {
+    const val = Number(data[p] ?? 0);
+    iaqiValues[p] = calculateIAQI(val, p);
+  }
+
+  // AQI 是各 IAQI 的最大值
+  let maxIAQI = 0;
+  let primaryPollutant = "";
+  for (const [p, iaqi] of Object.entries(iaqiValues)) {
+    if (iaqi > maxIAQI) {
+      maxIAQI = iaqi;
+      primaryPollutant = p.toUpperCase();
+    }
+  }
+
+  const aqi = Math.round(maxIAQI);
+
+  // 确定等级和颜色
+  let level = "优";
+  let color = "#22c55e";
+  if (aqi > 300) { level = "严重"; color = "#7f1d1d"; }
+  else if (aqi > 200) { level = "重度"; color = "#ef4444"; }
+  else if (aqi > 150) { level = "中度"; color = "#f97316"; }
+  else if (aqi > 100) { level = "轻度"; color = "#facc15"; }
+  else if (aqi > 50) { level = "良"; color = "#a3e635"; }
+
+  return { aqi, primaryPollutant, level, color };
+}
+
+/**
+ * 从年度月数据中提取省份-城市映射（二级分组）
+ * @param {string} year - 年份
+ * @returns {Promise<Object>} { "北京市": ["北京市"], "河北省": ["石家庄市", ...], ... }
+ */
+export async function getCitiesByProvince(year) {
+  const provinceMap = {};
+
+  try {
+    // 加载一个月的数据来获取城市列表（月数据包含所有城市）
+    const monthlyData = await loadOneMonth(`${year}-01`);
+
+    if (!monthlyData || monthlyData.length === 0) {
+      // 尝试加载其他月份
+      for (let m = 2; m <= 12; m++) {
+        const data = await loadOneMonth(`${year}-${String(m).padStart(2, '0')}`);
+        if (data && data.length > 0) {
+          for (const row of data) {
+            const province = row.province || "未知";
+            const city = row.city || row.province;
+            if (!provinceMap[province]) {
+              provinceMap[province] = new Set();
+            }
+            if (city) provinceMap[province].add(city);
+          }
+          break;
+        }
+      }
+    } else {
+      for (const row of monthlyData) {
+        const province = row.province || "未知";
+        const city = row.city || row.province;
+        if (!provinceMap[province]) {
+          provinceMap[province] = new Set();
+        }
+        if (city) provinceMap[province].add(city);
+      }
+    }
+
+    // 转换 Set 为数组并排序
+    const result = {};
+    const sortedProvinces = Object.keys(provinceMap).sort();
+    for (const province of sortedProvinces) {
+      result[province] = Array.from(provinceMap[province]).sort();
+    }
+
+    return result;
+  } catch (err) {
+    console.error("[getCitiesByProvince] 获取城市列表失败:", err);
+    return {};
+  }
+}
+
+/**
+ * 加载指定城市全年的日数据，用于日历热力图
+ * @param {string} year - 年份
+ * @param {string} cityName - 城市名
+ * @returns {Promise<Array>} [{ date, pm25, pm10, so2, no2, co, o3, aqi, level, color }, ...]
+ */
+export async function computeCityYearCalendar(year, cityName) {
+  const result = [];
+
+  try {
+    // 加载年度索引获取所有日期
+    const index = await loadIndex(year);
+    const days = index.days || [];
+
+    console.log(`[computeCityYearCalendar] 开始加载 ${year} 年 ${cityName} 的日历数据，共 ${days.length} 天`);
+
+    // 为了性能，批量加载而不是逐个等待
+    // 由于日数据文件可能很大，我们分批处理
+    const batchSize = 30; // 每批加载30天
+
+    for (let i = 0; i < days.length; i += batchSize) {
+      const batchDays = days.slice(i, i + batchSize);
+      const batchPromises = batchDays.map(async (dateStr) => {
+        try {
+          const dayData = await loadOneDay(dateStr);
+
+          // 查找指定城市的数据
+          const cityRow = dayData.find(row => {
+            const rowCity = row.city || row.province;
+            return rowCity === cityName ||
+              rowCity?.includes(cityName) ||
+              cityName?.includes(rowCity?.replace(/市|县|区$/, ''));
+          });
+
+          if (cityRow) {
+            const pm25 = Number(cityRow.pm25 ?? 0);
+            const pm10 = Number(cityRow.pm10 ?? 0);
+            const so2 = Number(cityRow.so2 ?? 0);
+            const no2 = Number(cityRow.no2 ?? 0);
+            const co = Number(cityRow.co ?? 0);
+            const o3 = Number(cityRow.o3 ?? 0);
+
+            const aqiInfo = calculateAQI({ pm25, pm10, so2, no2, co, o3 });
+
+            return {
+              date: dateStr,
+              pm25: pm25.toFixed(1),
+              pm10: pm10.toFixed(1),
+              so2: so2.toFixed(1),
+              no2: no2.toFixed(1),
+              co: co.toFixed(2),
+              o3: o3.toFixed(1),
+              aqi: aqiInfo.aqi,
+              level: aqiInfo.level,
+              color: aqiInfo.color,
+              primaryPollutant: aqiInfo.primaryPollutant
+            };
+          }
+          return null;
+        } catch (e) {
+          return null;
+        }
+      });
+
+      const batchResults = await Promise.all(batchPromises);
+      result.push(...batchResults.filter(r => r !== null));
+    }
+
+    console.log(`[computeCityYearCalendar] 成功加载 ${result.length} 天数据`);
+    return result;
+  } catch (err) {
+    console.error("[computeCityYearCalendar] 加载失败:", err);
+    return [];
+  }
 }
 
 
