@@ -147,6 +147,13 @@
               />
             </div>
           </section>
+
+          <!-- 城市污染日历 -->
+          <section class="layout single">
+            <div class="pane">
+              <CityPollutionCalendar />
+            </div>
+          </section>
         </template>
 
         <!-- 月份视图 -->
@@ -499,6 +506,7 @@ import PollutantRingGrid from "./components/PollutantRingGrid.vue";
 import CityStackedPie from "./components/CityStackedPie.vue";
 import CityTypeRibbon from "./components/CityTypeRibbon.vue";
 import MonthView from "./components/MonthView.vue";
+import CityPollutionCalendar from "./components/CityPollutionCalendar.vue";
 import {
   classifyLevels,
   computeRadialVector,
