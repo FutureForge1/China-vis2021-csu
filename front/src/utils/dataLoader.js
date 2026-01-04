@@ -1006,3 +1006,118 @@ export function computeWindRose(rows) {
     value: counts[i] ? Number((sums[i] / counts[i]).toFixed(2)) : 0,
   }));
 }
+
+/**
+ * 加载月度数据
+ * @param {string} year 年份，如 "2013"
+ * @param {string} month 月份，如 "01"
+ * @returns {Promise<Array>} 月度数据
+ */
+export async function loadMonthlyData(year, month) {
+  const monthStr = month.padStart(2, '0');
+  const paths = [
+    `/data/${year}/monthly/${year}${monthStr}_monthly.json`,
+    `/data/${year}/monthly/${year}${monthStr}_mothly.json`,
+  ];
+
+  try {
+    let data = await fetchJsonWithFallback(paths);
+
+    // 关键修改：转换字段名，从 *_mean 映射到简写
+    if (data && data.length) {
+      data = data.map(item => {
+        const newItem = { ...item };
+
+        // 污染物字段映射
+        if (item.pm25_mean !== undefined) newItem.pm25 = item.pm25_mean;
+        if (item.pm10_mean !== undefined) newItem.pm10 = item.pm10_mean;
+        if (item.so2_mean !== undefined) newItem.so2 = item.so2_mean;
+        if (item.no2_mean !== undefined) newItem.no2 = item.no2_mean;
+        if (item.co_mean !== undefined) newItem.co = item.co_mean;
+        if (item.o3_mean !== undefined) newItem.o3 = item.o3_mean;
+
+        // 气象字段映射
+        if (item.temp_mean !== undefined) newItem.temp = item.temp_mean;
+        if (item.rh_mean !== undefined) newItem.rh = item.rh_mean;
+        if (item.psfc_mean !== undefined) newItem.psfc = item.psfc_mean;
+        if (item.u_mean !== undefined) newItem.u = item.u_mean;
+        if (item.v_mean !== undefined) newItem.v = item.v_mean;
+
+        // 添加空气质量指数字段映射（如果有）
+        if (item.aqi_mean !== undefined) newItem.aqi = item.aqi_mean;
+
+        return newItem;
+      });
+    }
+
+    return data;
+  } catch (error) {
+    console.warn(`月度数据加载失败 ${year}-${month}:`, error);
+    return [];
+  }
+}
+
+/**
+ * 获取可用的年份列表
+ */
+export function getAvailableYears() {
+  return ["2013", "2014", "2015", "2016", "2017", "2018", "2019"];
+}
+
+/**
+ * 获取可用的月份列表（固定1-12月）
+ */
+export function getAvailableMonths() {
+  return Array.from({length: 12}, (_, i) => (i + 1).toString().padStart(2, '0'));
+}
+
+/**
+ * 从月度数据中提取所有可用年份月份组合
+ */
+export async function getAvailableMonthlyPeriods() {
+  const years = getAvailableYears();
+  const periods = [];
+
+  // 由于数据量不大，可以尝试探测文件存在性
+  for (const year of years) {
+    for (let month = 1; month <= 12; month++) {
+      const monthStr = month.toString().padStart(2, '0');
+      try {
+        // 尝试加载一个数据点来验证文件是否存在
+        const testData = await loadMonthlyData(year, monthStr);
+        if (testData && testData.length > 0) {
+          periods.push(`${year}-${monthStr}`);
+        }
+      } catch (e) {
+        // 文件不存在，跳过
+      }
+    }
+  }
+
+  return periods;
+}
+
+// 月度数据统计分析
+export function analyzeMonthlyStats(monthlyData, metric) {
+  const values = monthlyData
+    .map(row => {
+      const val = row[metric] || row[`${metric}_mean`] || 0;
+      return Number(val);
+    })
+    .filter(v => !isNaN(v) && v !== 0);
+
+  return {
+    count: values.length,
+    avg: values.length ? values.reduce((a, b) => a + b) / values.length : 0,
+    max: values.length ? Math.max(...values) : 0,
+    min: values.length ? Math.min(...values) : 0,
+    std: values.length ? calculateStd(values) : 0
+  };
+}
+
+function calculateStd(values) {
+  const avg = values.reduce((a, b) => a + b) / values.length;
+  const squareDiffs = values.map(value => Math.pow(value - avg, 2));
+  const avgSquareDiff = squareDiffs.reduce((a, b) => a + b) / squareDiffs.length;
+  return Math.sqrt(avgSquareDiff);
+}

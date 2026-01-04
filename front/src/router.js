@@ -8,6 +8,7 @@ const routes = [
   { path: "/story", name: "story", component: EmptyView },
   { path: "/types", name: "types", component: EmptyView },
   { path: "/trends", name: "trends", component: EmptyView },
+  { path: "/monthly", name: "monthly", component: EmptyView },
 ];
 
 const router = createRouter({

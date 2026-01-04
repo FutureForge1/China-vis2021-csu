@@ -13,6 +13,7 @@
             <RouterLink to="/story" :class="{ active: isStory }">感知</RouterLink>
             <RouterLink to="/types" :class="{ active: isTypes }">类型分析</RouterLink>
             <RouterLink to="/trends" :class="{ active: isTrends }">趋势对比</RouterLink>
+            <RouterLink to="/monthly" :class="{ active: isMonthly }">月度分析补充</RouterLink>
           </nav>
           <TimeControls
             :granularity="granularity"
@@ -245,6 +246,185 @@
           </div>
         </section>
       </template>
+
+      <!-- 在现有的模板块之后添加 -->
+      <template v-else-if="isMonthly">
+        <div class="section-heading">
+          <div class="section-badge">月度分析补充</div>
+          <div class="section-meta">补充</div>
+        </div>
+
+        <!-- 时间选择控件 -->
+        <div class="monthly-controls">
+          <div class="time-selector">
+            <label>年份：</label>
+            <select v-model="selectedYear" @change="handleYearChange">
+              <option v-for="year in availableYears" :key="year" :value="year">{{ year }}年</option>
+            </select>
+
+            <label>月份：</label>
+            <select v-model="selectedMonth" @change="handleMonthChange">
+              <option v-for="month in availableMonths" :key="month" :value="month">{{ month }}月</option>
+            </select>
+          </div>
+
+          <div class="metric-selector">
+            <label>指标：</label>
+            <select v-model="monthlyMetric">
+              <option value="pm25">PM2.5</option>
+              <option value="pm10">PM10</option>
+              <option value="so2">SO₂</option>
+              <option value="no2">NO₂</option>
+              <option value="co">CO</option>
+              <option value="o3">O₃</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- 月度分析内容 -->
+        <ControlPanel
+          class="pane"
+          :date="currentMonthlyPeriod"
+          :region="selectedRegion || '全国'"
+          :rows="monthlyData"
+          :metric="monthlyMetric"
+          :map-mode="mapMode"
+          @select-metric="monthlyMetric = $event"
+          @toggle-map-mode="mapMode = $event"
+        />
+
+        <section class="layout">
+<!--          <div class="pane map-pane">-->
+<!--            <div class="map-switch">-->
+<!--              <button :class="{ active: mapMode === 'pollution' }" @click="mapMode = 'pollution'">污染</button>-->
+<!--              <button :class="{ active: mapMode === 'weather' }" @click="mapMode = 'weather'">气象</button>-->
+<!--              <button :class="{ active: mapMode === 'type' }" @click="mapMode = 'type'">类型</button>-->
+<!--            </div>-->
+
+<!--            <MapPanel-->
+<!--              v-if="mapMode === 'pollution'"-->
+<!--              :data="monthlyMapSeries"-->
+<!--              :metric="monthlyMetric"-->
+<!--              :title="`${currentMonthlyPeriod} ${monthlyMetric.toUpperCase()} 月均分布`"-->
+<!--              :selected-name="selectedRegion"-->
+<!--              @select="handleMapSelect"-->
+<!--            />-->
+
+<!--            <MapPanel-->
+<!--              v-else-if="mapMode === 'weather'"-->
+<!--              :data="monthlyWeatherMapSeries"-->
+<!--              :metric="weatherMetricLabel"-->
+<!--              :title="`${currentMonthlyPeriod} ${weatherMetricLabel} 月均分布`"-->
+<!--              mode="weather"-->
+<!--              :selected-name="selectedRegion"-->
+<!--              @select="handleMapSelect"-->
+<!--            />-->
+
+<!--            <TypeMap v-else :items="monthlyTypeMapData" />-->
+<!--          </div>-->
+
+          <div class="pane side-pane">
+            <div class="stats-panel">
+              <h3>月度统计</h3>
+              <div class="stat-item">
+                <span class="stat-label">数据点数：</span>
+                <span class="stat-value">{{ monthlyData.length }}</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">{{ monthlyMetric.toUpperCase() }} 均值：</span>
+                <span class="stat-value">{{ monthlyAvgValue.toFixed(2) }}</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">最高值：</span>
+                <span class="stat-value">{{ monthlyMaxValue.toFixed(2) }}</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">最低值：</span>
+                <span class="stat-value">{{ monthlyMinValue.toFixed(2) }}</span>
+              </div>
+            </div>
+
+            <MonthlyRadar class="mt" :data="monthlyRadarData" />
+          </div>
+        </section>
+
+<!--        <section class="layout secondary">-->
+<!--          <div class="pane">-->
+<!--            <h3>月度趋势对比</h3>-->
+<!--            <MonthlyTrendChart-->
+<!--              :year="selectedYear"-->
+<!--              :metric="monthlyMetric"-->
+<!--              :data="multiYearMonthlyData"-->
+<!--            />-->
+<!--          </div>-->
+<!--          <div class="pane">-->
+<!--            <h3>污染物比例</h3>-->
+<!--            <PollutantPie :data="monthlyPollutantShares" />-->
+<!--          </div>-->
+<!--        </section>-->
+
+        <!-- 在现有的月度分析模板中，在第二个section后添加以下内容 -->
+
+<!--        <section class="layout secondary">-->
+<!--          <div class="pane">-->
+<!--            <h3>月度等级分布</h3>-->
+<!--            <LevelBar :levels="monthlyLevelStats" />-->
+<!--          </div>-->
+<!--          <div class="pane">-->
+<!--            <h3>月度趋势</h3>-->
+<!--            <TrendLine-->
+<!--              :metric="monthlyMetric"-->
+<!--              :series="monthlyTrendSeries"-->
+<!--              :dates="monthlyTrendDates"-->
+<!--            />-->
+<!--          </div>-->
+<!--        </section>-->
+
+        <section class="layout secondary">
+          <div class="pane">
+            <h3>污染物径向图</h3>
+            <RadialPollutant :data="monthlyRadialVector" />
+          </div>
+          <div class="pane">
+            <h3>相关性分析</h3>
+            <CorrHeatmap :matrix="monthlyCorrMatrix" />
+          </div>
+        </section>
+
+        <section class="layout secondary">
+          <div class="pane">
+            <h3>城市排名</h3>
+            <AQIRanking :items="monthlyAQIRanking" @select="handleRankingSelect" />
+          </div>
+          <div class="pane">
+            <h3>平行坐标</h3>
+            <ParallelAQI :rows="monthlyParallelRows" @select="handleParallelSelect" />
+          </div>
+        </section>
+
+<!--        <section class="layout secondary">-->
+<!--          <div class="pane">-->
+<!--            <h3>城市详细分析</h3>-->
+<!--            <CityStackedPie-->
+<!--              :city="selectedRegion"-->
+<!--              :day-values="monthlyCityValues"-->
+<!--              :month-stats="monthlyCityStats"-->
+<!--              :month="currentMonthlyPeriod"-->
+<!--            />-->
+<!--          </div>-->
+<!--          <div class="pane">-->
+<!--            <h3>类型演变</h3>-->
+<!--            <CityTypeRibbon-->
+<!--              :dates="monthlyTypeRibbon.dates"-->
+<!--              :series="monthlyTypeRibbon.series"-->
+<!--              :type-order="monthlyTypeRibbon.typeOrder"-->
+<!--              :province="selectedRegion"-->
+<!--            />-->
+<!--          </div>-->
+<!--        </section>-->
+
+      </template>
+
     </div>
   </div>
 </template>
@@ -631,6 +811,232 @@ watch(metric, () => {
 onMounted(() => {
   bootstrap();
 });
+
+
+
+import {
+  loadMonthlyData,
+  getAvailableYears,
+  getAvailableMonths,
+  getAvailableMonthlyPeriods
+} from "./utils/dataLoader";
+
+// 月度分析相关状态
+const isMonthly = computed(() => route.name === "monthly");
+
+// 月度选择相关
+const selectedYear = ref("2013");
+const selectedMonth = ref("01");
+const monthlyMetric = ref("pm25");
+const monthlyData = ref([]);
+const availableYears = getAvailableYears();
+const availableMonths = getAvailableMonths();
+
+// 计算属性
+const currentMonthlyPeriod = computed(() => `${selectedYear.value}-${selectedMonth.value}`);
+const monthlyMapSeries = computed(() => aggregateMap(monthlyData.value, monthlyMetric.value));
+const monthlyWeatherMapSeries = computed(() => aggregateMap(monthlyData.value, weatherMetric.value));
+
+// 月度统计信息
+const monthlyStats = computed(() => {
+  const metric = monthlyMetric.value;
+  const values = monthlyData.value
+    .map(row => {
+      // 尝试多种可能的字段名
+      const val = row[metric] ||
+                  row[`${metric}_mean`] ||
+                  (metric === 'aqi' ? (row[metric] || row['aqi_mean']) : 0);
+      return Number(val);
+    })
+    .filter(v => !isNaN(v) && v !== 0); // 过滤掉0值，因为0可能是缺失值
+
+  if (values.length === 0) {
+    console.warn(`月度数据中未找到指标 ${metric} 的有效值，数据示例:`,
+      monthlyData.value.slice(0, 3));
+  }
+
+  return {
+    count: values.length,
+    avg: values.length ? values.reduce((a, b) => a + b) / values.length : 0,
+    max: values.length ? Math.max(...values) : 0,
+    min: values.length ? Math.min(...values) : 0
+  };
+});
+
+const monthlyAvgValue = computed(() => monthlyStats.value.avg);
+const monthlyMaxValue = computed(() => monthlyStats.value.max);
+const monthlyMinValue = computed(() => monthlyStats.value.min);
+
+// 月度雷达图数据
+const monthlyRadarData = computed(() => {
+  const pollutants = ["pm25", "pm10", "so2", "no2", "co", "o3"];
+  const averages = {};
+
+  pollutants.forEach(pollutant => {
+    const values = monthlyData.value
+      .map(row => Number(row[pollutant]))
+      .filter(v => !isNaN(v));
+    averages[pollutant] = values.length ? values.reduce((a, b) => a + b) / values.length : 0;
+  });
+
+  return {
+    indicators: pollutants.map(p => ({
+      name: p.toUpperCase(),
+      max: Math.max(100, averages[p] * 1.5)
+    })),
+    values: pollutants.map(p => averages[p])
+  };
+});
+
+// 事件处理
+async function handleYearChange() {
+  await loadCurrentMonthlyData();
+}
+
+async function handleMonthChange() {
+  await loadCurrentMonthlyData();
+}
+
+// 加载月度数据
+async function loadCurrentMonthlyData() {
+  try {
+    const data = await loadMonthlyData(selectedYear.value, selectedMonth.value);
+    monthlyData.value = data || [];
+  } catch (error) {
+    console.error("加载月度数据失败:", error);
+    monthlyData.value = [];
+  }
+}
+
+// 路由切换时加载数据
+watch(() => route.name, async (newName) => {
+  if (newName === "monthly") {
+    await loadCurrentMonthlyData();
+  }
+});
+
+// 初始化时如果是月度页面则加载数据
+onMounted(async () => {
+  if (route.name === "monthly") {
+    await loadCurrentMonthlyData();
+  }
+});
+
+
+// 月度分析计算属性
+const monthlyLevelStats = computed(() =>
+  classifyLevels(monthlyData.value, monthlyMetric.value)
+);
+
+const monthlyRadialVector = computed(() =>
+  computeRadialVector(monthlyData.value)
+);
+
+// 月度趋势数据（假设有跨月数据）
+const monthlyTrendSeries = computed(() => {
+  // 这里需要根据实际数据结构调整
+  if (!multiYearMonthlyData.value.length) return [];
+  return multiYearMonthlyData.value.map(item => ({
+    date: item.period,
+    value: item.avgValue || 0
+  }));
+});
+
+const monthlyTrendDates = computed(() =>
+  monthlyTrendSeries.value.map(item => item.date)
+);
+
+const monthlyCorrMatrix = computed(() =>
+  computeCorrMatrix(
+    [{ data: monthlyData.value }], // 包装成与allDays相同的结构
+    ["pm25", "pm10", "so2", "no2", "o3"],
+    ["temp", "rh", "psfc"]
+  )
+);
+
+const monthlyAQIRanking = computed(() =>
+  computeAQIRanking(monthlyData.value, "province", 15)
+);
+
+const monthlyParallelRows = computed(() =>
+  buildParallelData(monthlyData.value, "province", 30)
+);
+
+const monthlyCityValues = computed(() => {
+  if (!selectedRegion.value && !monthlyData.value.length) return {};
+  const target = normalizeProvince(selectedRegion.value);
+  const row = monthlyData.value.find(r =>
+    normalizeProvince(r.city) === target ||
+    normalizeProvince(r.province) === target
+  ) || monthlyData.value[0] || {};
+
+  return {
+    pm25: row.pm25,
+    pm10: row.pm10,
+    so2: row.so2,
+    no2: row.no2,
+    co: row.co,
+    o3: row.o3
+  };
+});
+
+const monthlyCityStats = computed(() =>
+  computeCityMonthStats([{ data: monthlyData.value }], selectedRegion.value, parseInt(selectedMonth.value))
+);
+
+const monthlyTypeRibbon = computed(() =>
+  computeCityTypeTrajectory([{ data: monthlyData.value }], selectedRegion.value, parseInt(selectedMonth.value))
+);
+
+// 多年度月度数据（需要根据实际数据源调整）
+const multiYearMonthlyData = ref([]);
+const monthlyPollutantShares = computed(() => {
+  const pollutants = ["pm25", "pm10", "so2", "no2", "co", "o3"];
+  const totals = {};
+  let total = 0;
+
+  pollutants.forEach(p => {
+    const values = monthlyData.value
+      .map(row => Number(row[p]))
+      .filter(v => !isNaN(v) && v > 0);
+    totals[p] = values.length ? values.reduce((a, b) => a + b) / values.length : 0;
+    total += totals[p];
+  });
+
+  return pollutants.map(p => ({
+    name: p.toUpperCase(),
+    value: total > 0 ? (totals[p] / total) * 100 : 0
+  }));
+});
+
+// 加载多年度数据
+async function loadMultiYearMonthlyData() {
+  const years = ["2013", "2014", "2015"];
+  const allData = [];
+
+  for (const year of years) {
+    try {
+      const data = await loadMonthlyData(year, selectedMonth.value);
+      if (data && data.length) {
+        const avgValue = data.reduce((sum, row) => {
+          const val = Number(row[monthlyMetric.value]);
+          return sum + (isNaN(val) ? 0 : val);
+        }, 0) / data.length;
+
+        allData.push({
+          year,
+          period: `${year}-${selectedMonth.value}`,
+          avgValue
+        });
+      }
+    } catch (error) {
+      console.warn(`加载${year}年数据失败:`, error);
+    }
+  }
+
+  multiYearMonthlyData.value = allData;
+}
+
 </script>
 
 <style scoped>
@@ -1050,4 +1456,89 @@ h1 {
     grid-template-columns: 1fr;
   }
 }
+
+.monthly-controls {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 20px;
+  padding: 15px;
+  background: var(--card);
+  border-radius: 8px;
+  border: 1px solid var(--card-border);
+}
+
+.time-selector, .metric-selector {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.time-selector label, .metric-selector label {
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.time-selector select, .metric-selector select {
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: white;
+}
+
+.stats-panel {
+  padding: 15px;
+}
+
+.stat-item {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.stat-label {
+  color: var(--muted);
+}
+
+.stat-value {
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.monthly-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+  margin: 20px 0;
+}
+
+.monthly-card {
+  background: var(--card);
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-top: 15px;
+}
+
+.stat-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px;
+  background: #f8f9fa;
+  border-radius: 4px;
+}
+
+.chart-container {
+  width: 100%;
+  height: 300px;
+  margin: 15px 0;
+}
+
 </style>
