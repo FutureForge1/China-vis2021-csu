@@ -25422,5 +25422,559 @@
     "longitude": "119.58",
     "latitude": "23.58",
     "zipCode": "880"
+  },
+  {
+    "province": "海南省",
+    "city": "三沙市",
+    "county": "三沙市",
+    "longitude": "112.34882",
+    "latitude": "16.83166",
+    "zipCode": ""
+  },
+  {
+    "province": "新疆维吾尔自治区",
+    "city": "五家渠市",
+    "county": "五家渠市",
+    "longitude": "87.53921",
+    "latitude": "44.16734",
+    "zipCode": ""
+  },
+  {
+    "province": "新疆维吾尔自治区",
+    "city": "克孜勒苏柯尔克孜自治州",
+    "county": "克孜勒苏柯尔克孜自治州",
+    "longitude": "76.17330",
+    "latitude": "39.71460",
+    "zipCode": ""
+  },
+  {
+    "province": "新疆维吾尔自治区",
+    "city": "北屯市",
+    "county": "北屯市",
+    "longitude": "87.82950",
+    "latitude": "47.35330",
+    "zipCode": ""
+  },
+  {
+    "province": "新疆维吾尔自治区",
+    "city": "双河市",
+    "county": "双河市",
+    "longitude": "82.36",
+    "latitude": "44.83",
+    "zipCode": ""
+  },
+  {
+    "province": "新疆维吾尔自治区",
+    "city": "可克达拉市",
+    "county": "可克达拉市",
+    "longitude": "80.43333",
+    "latitude": "41.71667",
+    "zipCode": ""
+  },
+  {
+    "province": "台湾省",
+    "city": "台湾省",
+    "county": "台湾省",
+    "longitude": "121.5",
+    "latitude": "25.03",
+    "zipCode": ""
+  },
+  {
+    "province": "新疆维吾尔自治区",
+    "city": "吐鲁番市",
+    "county": "吐鲁番市",
+    "longitude": "89.18400",
+    "latitude": "42.95700",
+    "zipCode": ""
+  },
+  {
+    "province": "新疆维吾尔自治区",
+    "city": "哈密市",
+    "county": "哈密市",
+    "longitude": "93.51400",
+    "latitude": "42.83300",
+    "zipCode": ""
+  },
+  {
+    "province": "湖南省",
+    "city": "湘潭市",
+    "county": "湘潭市",
+    "longitude": "112.94400",
+    "latitude": "27.82900",
+    "zipCode": ""
+  },
+  {
+    "province": "湖南省",
+    "city": "怀化市",
+    "county": "怀化市",
+    "longitude": "109.98600",
+    "latitude": "27.55000",
+    "zipCode": ""
+  },
+  {
+    "province": "湖南省",
+    "city": "张家界市",
+    "county": "张家界市",
+    "longitude": "110.48100",
+    "latitude": "29.11700",
+    "zipCode": ""
+  },
+  {
+    "province": "湖南省",
+    "city": "长沙市",
+    "county": "长沙市",
+    "longitude": "112.93880",
+    "latitude": "28.22820",
+    "zipCode": ""
+  },
+  {
+    "province": "香港特别行政区",
+    "city": "元朗",
+    "county": "元朗",
+    "longitude": "114.03400",
+    "latitude": "22.44400",
+    "zipCode": ""
+  },
+  {
+    "province": "湖北省",
+    "city": "天门市",
+    "county": "天门市",
+    "longitude": "113.16500",
+    "latitude": "30.66300",
+    "zipCode": ""
+  },
+  {
+    "province": "香港特别行政区",
+    "city": "九龙城",
+    "county": "九龙城",
+    "longitude": "114.19",
+    "latitude": "22.31",
+    "zipCode": ""
+  },
+  {
+    "province": "湖北省",
+    "city": "潜江市",
+    "county": "潜江市",
+    "longitude": "112.89600",
+    "latitude": "30.40100",
+    "zipCode": ""
+  },
+  {
+    "province": "新疆维吾尔自治区",
+    "city": "图木舒克市",
+    "county": "图木舒克市",
+    "longitude": "79.07700",
+    "latitude": "39.86700",
+    "zipCode": ""
+  },
+  {
+    "province": "河南省",
+    "city": "济源市",
+    "county": "济源市",
+    "longitude": "112.57",
+    "latitude": "35.09",
+    "zipCode": ""
+  },
+  {
+    "province": "湖北省",
+    "city": "襄阳市",
+    "county": "襄阳市",
+    "longitude": "112.14400",
+    "latitude": "32.04200",
+    "zipCode": ""
+  },
+  {
+    "province": "湖南省",
+    "city": "永州市",
+    "county": "永州市",
+    "longitude": "111.61400",
+    "latitude": "26.43400",
+    "zipCode": ""
+  }
+  ,
+  {
+    "province": "黑龙江省",
+    "city": "中农发山丹马场",
+    "county": "中农发山丹马场",
+    "longitude": "",
+    "latitude": "",
+    "zipCode": ""
+  },
+  {
+    "province": "湖南省",
+    "city": "怀化市",
+    "county": "怀化市",
+    "longitude": "109.98600",
+    "latitude": "27.55000",
+    "zipCode": ""
+  },
+  {
+    "province": "广东省",
+    "city": "莲花山风景林自然保护区",
+    "county": "莲花山风景林自然保护区",
+    "longitude": "113.91500",
+    "latitude": "22.54300",
+    "zipCode": ""
+  },
+  {
+    "province": "湖南省",
+    "city": "娄底市",
+    "county": "娄底市",
+    "longitude": "111.99600",
+    "latitude": "27.74100",
+    "zipCode": ""
+  },
+  {
+    "province": "天津市",
+    "city": "天津市",
+    "county": "天津市",
+    "longitude": "117.20000",
+    "latitude": "39.13300",
+    "zipCode": ""
+  },
+  {
+    "province": "新疆维吾尔自治区",
+    "city": "阿拉尔市",
+    "county": "阿拉尔市",
+    "longitude": "81.28500",
+    "latitude": "40.54500",
+    "zipCode": ""
+  },
+  {
+    "province": "广东省",
+    "city": "大埔县",
+    "county": "大埔县",
+    "longitude": "116.69100",
+    "latitude": "24.34800",
+    "zipCode": ""
+  },
+  {
+    "province": "云南省",
+    "city": "普洱市",
+    "county": "普洱市",
+    "longitude": "100.96600",
+    "latitude": "22.82500",
+    "zipCode": ""
+  },
+  {
+    "province": "湖南省",
+    "city": "湘西土家族苗族自治州",
+    "county": "湘西土家族苗族自治州",
+    "longitude": "109.74500",
+    "latitude": "28.31700",
+    "zipCode": ""
+  },
+  {
+    "province": "湖南省",
+    "city": "永州市",
+    "county": "永州市",
+    "longitude": "111.61400",
+    "latitude": "26.43400",
+    "zipCode": ""
+  },
+  {
+    "province": "未知省",
+    "city": "新星",
+    "county": "新星",
+    "longitude": "",
+    "latitude": "",
+    "zipCode": ""
+  },
+  {
+    "province": "湖南省",
+    "city": "岳阳市",
+    "county": "岳阳市",
+    "longitude": "113.13200",
+    "latitude": "29.37000",
+    "zipCode": ""
+  },
+  {
+    "province": "湖北省",
+    "city": "神农架林区",
+    "county": "神农架林区",
+    "longitude": "110.66700",
+    "latitude": "31.75000",
+    "zipCode": ""
+  },
+  {
+    "province": "贵州省",
+    "city": "黔西南布依族苗族自治州",
+    "county": "黔西南布依族苗族自治州",
+    "longitude": "104.90600",
+    "latitude": "25.08700",
+    "zipCode": ""
+  },
+  {
+    "province": "上海市",
+    "city": "上海市",
+    "county": "上海市",
+    "longitude": "121.47370",
+    "latitude": "31.23040",
+    "zipCode": ""
+  },
+  {
+    "province": "湖南省",
+    "city": "株洲市",
+    "county": "株洲市",
+    "longitude": "113.13100",
+    "latitude": "27.82700",
+    "zipCode": ""
+  },
+  {
+    "province": "湖南省",
+    "city": "张家界市",
+    "county": "张家界市",
+    "longitude": "110.47900",
+    "latitude": "29.11700",
+    "zipCode": ""
+  },
+  {
+    "province": "重庆市",
+    "city": "重庆市",
+    "county": "重庆市",
+    "longitude": "106.55160",
+    "latitude": "29.56470",
+    "zipCode": ""
+  },
+  {
+    "province": "新疆维吾尔自治区",
+    "city": "胡杨河市",
+    "county": "胡杨河市",
+    "longitude": "",
+    "latitude": "",
+    "zipCode": ""
+  },
+  {
+    "province": "北京市",
+    "city": "北京市",
+    "county": "北京市",
+    "longitude": "116.40529",
+    "latitude": "39.90498",
+    "zipCode": ""
+  },
+  {
+    "province": "澳门特别行政区",
+    "city": "澳门",
+    "county": "澳门",
+    "longitude": "113.54909",
+    "latitude": "22.19875",
+    "zipCode": ""
+  },
+  {
+    "province": "北京市",
+    "city": "境界线",
+    "county": "境界线",
+    "longitude": "",
+    "latitude": "",
+    "zipCode": ""
+  },
+  {
+    "province": "山西省",
+    "city": "太子山天然林保护区",
+    "county": "太子山天然林保护区",
+    "longitude": "",
+    "latitude": "",
+    "zipCode": ""
+  },
+  {
+    "province": "香港特别行政区",
+    "city": "香港",
+    "county": "香港",
+    "longitude": "114.10950",
+    "latitude": "22.39643",
+    "zipCode": ""
+  },
+  {
+    "province": "新疆维吾尔自治区",
+    "city": "铁门关市",
+    "county": "铁门关市",
+    "longitude": "85.51000",
+    "latitude": "44.79400",
+    "zipCode": ""
+  },
+  {
+    "province": "新疆维吾尔自治区",
+    "city": "昆玉市",
+    "county": "昆玉市",
+    "longitude": "79.29100",
+    "latitude": "39.54900",
+    "zipCode": ""
+  },
+  {
+    "province": "未知省",
+    "city": "白杨",
+    "county": "白杨",
+    "longitude": "",
+    "latitude": "",
+    "zipCode": ""
+  },
+  {
+    "province": "山东省",
+    "city": "菏泽市",
+    "county": "菏泽市",
+    "longitude": "115.48000",
+    "latitude": "35.23300",
+    "zipCode": ""
+  }
+,
+  {
+    "province": "湖南省",
+    "city": "湘西土家族苗族",
+    "county": "湘西土家族苗族自治州",
+    "longitude": "109.74500",
+    "latitude": "28.31700",
+    "zipCode": ""
+  },
+  {
+    "province": "湖南省",
+    "city": "娄底",
+    "county": "娄底市",
+    "longitude": "111.99600",
+    "latitude": "27.74100",
+    "zipCode": ""
+  },
+  {
+    "province": "北京市",
+    "city": "北京",
+    "county": "北京市",
+    "longitude": "116.40529",
+    "latitude": "39.90498",
+    "zipCode": ""
+  },
+  {
+    "province": "香港特别行政区",
+    "city": "西貢",
+    "county": "西貢",
+    "longitude": "114.28",
+    "latitude": "22.38",
+    "zipCode": ""
+  },
+  {
+    "province": "上海市",
+    "city": "上海",
+    "county": "上海市",
+    "longitude": "121.47370",
+    "latitude": "31.23040",
+    "zipCode": ""
+  },
+  {
+    "province": "湖南省",
+    "city": "湘潭",
+    "county": "湘潭市",
+    "longitude": "112.94400",
+    "latitude": "27.82900",
+    "zipCode": ""
+  },
+  {
+    "province": "湖南省",
+    "city": "长沙",
+    "county": "长沙市",
+    "longitude": "112.93880",
+    "latitude": "28.22820",
+    "zipCode": ""
+  },
+  {
+    "province": "湖南省",
+    "city": "邵阳",
+    "county": "邵阳市",
+    "longitude": "111.46700",
+    "latitude": "27.23800",
+    "zipCode": ""
+  },
+  {
+    "province": "重庆市",
+    "city": "重庆",
+    "county": "重庆市",
+    "longitude": "106.55160",
+    "latitude": "29.56470",
+    "zipCode": ""
+  },
+  {
+    "province": "湖南省",
+    "city": "郴州",
+    "county": "郴州市",
+    "longitude": "113.01470",
+    "latitude": "25.77070",
+    "zipCode": ""
+  },
+  {
+    "province": "湖南省",
+    "city": "张家界",
+    "county": "张家界市",
+    "longitude": "110.48100",
+    "latitude": "29.11700",
+    "zipCode": ""
+  },
+  {
+    "province": "湖南省",
+    "city": "株洲",
+    "county": "株洲市",
+    "longitude": "113.13100",
+    "latitude": "27.82700",
+    "zipCode": ""
+  },
+  {
+    "province": "天津市",
+    "city": "天津",
+    "county": "天津市",
+    "longitude": "117.20000",
+    "latitude": "39.13300",
+    "zipCode": ""
+  },
+  {
+    "province": "湖南省",
+    "city": "益阳",
+    "county": "益阳市",
+    "longitude": "112.35500",
+    "latitude": "28.58800",
+    "zipCode": ""
+  },
+  {
+    "province": "湖南省",
+    "city": "常德",
+    "county": "常德市",
+    "longitude": "111.69100",
+    "latitude": "29.03400",
+    "zipCode": ""
+  },
+  {
+    "province": "湖南省",
+    "city": "怀化",
+    "county": "怀化市",
+    "longitude": "109.98600",
+    "latitude": "27.55000",
+    "zipCode": ""
+  },
+  {
+    "province": "湖南省",
+    "city": "衡阳",
+    "county": "衡阳市",
+    "longitude": "112.60700",
+    "latitude": "26.90000",
+    "zipCode": ""
+  },
+  {
+    "province": "湖南省",
+    "city": "永州",
+    "county": "永州市",
+    "longitude": "111.61400",
+    "latitude": "26.43400",
+    "zipCode": ""
+  },
+  {
+    "province": "湖南省",
+    "city": "岳阳",
+    "county": "岳阳市",
+    "longitude": "113.13200",
+    "latitude": "29.37000",
+    "zipCode": ""
+  },
+  {
+    "province": "海南省",
+    "city": "海南",
+    "county": "海南省",
+    "longitude": "110.33100",
+    "latitude": "20.03100",
+    "zipCode": ""
   }
 ]

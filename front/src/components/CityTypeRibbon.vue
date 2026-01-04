@@ -23,6 +23,26 @@ const colors = ["#d23669", "#d66b6b", "#d99c7b", "#d1b181", "#8cb972", "#6ba4c1"
 const monthLabel = computed(() => (props.dates[0] || "").slice(0, 7));
 
 const option = computed(() => {
+  console.log('[CityTypeRibbon] Props:', {
+    dates: props.dates?.length,
+    series: props.series?.length,
+    typeOrder: props.typeOrder?.length,
+    province: props.province
+  });
+
+  if (!props.dates || props.dates.length === 0 || !props.series || props.series.length === 0) {
+    console.log('[CityTypeRibbon] No data available');
+    return {
+      backgroundColor: "transparent",
+      title: {
+        text: '暂无数据',
+        left: 'center',
+        top: 'center',
+        textStyle: { color: '#94a3b8', fontSize: 14 }
+      }
+    };
+  }
+
   const maxSeries = 6;
   const seriesTrimmed = props.series.slice(0, maxSeries);
   return {

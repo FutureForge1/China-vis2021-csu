@@ -15,12 +15,24 @@
             <RouterLink to="/trends" :class="{ active: isTrends }">趋势对比</RouterLink>
             <RouterLink to="/monthly" :class="{ active: isMonthly }">月度分析补充</RouterLink>
           </nav>
+          <div class="view-controls">
+            <div class="view-toggle">
+              <button :class="{ active: viewMode === 'daily' }" @click="viewMode = 'daily'">日均视图</button>
+              <button :class="{ active: viewMode === 'monthly' }" @click="viewMode = 'monthly'">月份视图</button>
+            </div>
+          </div>
+          <YearControls
+            :current-year="viewMode === 'daily' ? currentYear : monthViewYear"
+            :available-years="availableYears"
+            @update:year="handleYearChange"
+          />
           <TimeControls
+            v-if="viewMode === 'daily'"
             :granularity="granularity"
             :metric="metric"
             :date-options="availableDates"
             :current-date="currentDate"
-            @update:granularity="granularity = $event"
+            @update:granularity="handleGranularityChange"
             @update:metric="metric = $event"
             @update:date="handleDateChange"
           />
@@ -28,110 +40,128 @@
       </header>
 
       <template v-if="isOverview">
-        <ControlPanel
-          class="pane"
-          :date="currentDate"
-          :region="selectedRegion || '全国'"
-          :rows="dayData"
-          :metric="metric"
-          :map-mode="mapMode"
-          @select-metric="metric = $event"
-          @toggle-map-mode="mapMode = $event"
-        />
-        <section class="layout">
-          <div class="pane map-pane">
-            <div class="map-switch">
-              <button :class="{ active: mapMode === 'pollution' }" @click="mapMode = 'pollution'">污染</button>
-              <button :class="{ active: mapMode === 'weather' }" @click="mapMode = 'weather'">气象</button>
-              <button :class="{ active: mapMode === 'type' }" @click="mapMode = 'type'">类型</button>
-              <div v-if="mapMode === 'weather'" class="weather-toggle">
-                <button :class="{ active: weatherMetric === 'wind' }" @click="weatherMetric = 'wind'">风速</button>
-                <button :class="{ active: weatherMetric === 'temp' }" @click="weatherMetric = 'temp'">气温</button>
-                <button :class="{ active: weatherMetric === 'rh' }" @click="weatherMetric = 'rh'">湿度</button>
-                <button :class="{ active: weatherMetric === 'psfc' }" @click="weatherMetric = 'psfc'">气压</button>
+        <!-- 日均视图 -->
+        <template v-if="viewMode === 'daily'">
+          <ControlPanel
+            class="pane"
+            :date="currentDate"
+            :region="selectedRegion || '全国'"
+            :rows="dayData"
+            :metric="metric"
+            :map-mode="mapMode"
+            @select-metric="metric = $event"
+            @toggle-map-mode="mapMode = $event"
+            @reset-region="selectedRegion = ''"
+          />
+          <section class="layout">
+            <div class="pane map-pane">
+              <div class="map-switch">
+                <button :class="{ active: mapMode === 'pollution' }" @click="mapMode = 'pollution'">污染</button>
+                <button :class="{ active: mapMode === 'weather' }" @click="mapMode = 'weather'">气象</button>
+                <button :class="{ active: mapMode === 'type' }" @click="mapMode = 'type'">类型</button>
+                <div v-if="mapMode === 'weather'" class="weather-toggle">
+                  <button :class="{ active: weatherMetric === 'wind' }" @click="weatherMetric = 'wind'">风速</button>
+                  <button :class="{ active: weatherMetric === 'temp' }" @click="weatherMetric = 'temp'">气温</button>
+                  <button :class="{ active: weatherMetric === 'rh' }" @click="weatherMetric = 'rh'">湿度</button>
+                  <button :class="{ active: weatherMetric === 'psfc' }" @click="weatherMetric = 'psfc'">气压</button>
+                </div>
+              </div>
+              <MapPanel
+                v-if="mapMode === 'pollution'"
+                :data="mapSeries"
+                :metric="metric"
+                :title="`地图：${metric}`"
+                :scatter="scatterPoints"
+                :heatmap="heatmapPoints"
+                :selected-name="selectedRegion"
+                @select="handleMapSelect"
+              />
+              <MapPanel
+                v-else-if="mapMode === 'weather'"
+                :data="weatherMapSeries"
+                :metric="weatherMetricLabel"
+                :title="`气象：${weatherMetricLabel}`"
+                mode="weather"
+                :scatter="scatterPoints"
+                :wind="windVectors"
+                :flow="windFlow"
+                :selected-name="selectedRegion"
+                @select="handleMapSelect"
+              />
+              <TypeMap v-else :items="typeMapData" :selected-name="selectedRegion" />
+            </div>
+            <div class="pane side-pane">
+              <LevelBar :levels="levelStats" />
+              <TrendLine
+                class="mt"
+                :metric="metric"
+                :series="trendSeries"
+                :dates="trendDates"
+              />
+              <RadialPollutant class="mt" :data="radialVector" />
+            </div>
+          </section>
+
+          <section class="layout secondary">
+            <div class="pane">
+              <SeasonalLevelStack
+                :dates="levelTimeline.dates"
+                :series="levelTimeline.series"
+                :metric="metric"
+                @select-date="handleDateChange"
+              />
+            </div>
+            <div class="pane">
+              <CorrHeatmap :matrix="corrMatrix" />
+            </div>
+          </section>
+
+          <section class="layout secondary">
+            <div class="pane">
+              <ParallelAQI :rows="parallelRows" @select="handleParallelSelect" />
+              <div class="parallel-actions">
+                <span>当前维度：{{ parallelLevel === "province" ? "省均值" : `城市（${parallelProvince || "未选"}` }} </span>
+                <button @click="resetParallel">重置到省</button>
               </div>
             </div>
-            <MapPanel
-              v-if="mapMode === 'pollution'"
-              :data="mapSeries"
-              :metric="metric"
-              :title="`地图：${metric}`"
-              :scatter="scatterPoints"
-              :heatmap="heatmapPoints"
-              :selected-name="selectedRegion"
-              @select="handleMapSelect"
-            />
-            <MapPanel
-              v-else-if="mapMode === 'weather'"
-              :data="weatherMapSeries"
-              :metric="weatherMetricLabel"
-              :title="`气象：${weatherMetricLabel}`"
-              mode="weather"
-              :scatter="scatterPoints"
-              :wind="windVectors"
-              :flow="windFlow"
-              :selected-name="selectedRegion"
-              @select="handleMapSelect"
-            />
-            <TypeMap v-else :items="typeMapData" />
-          </div>
-          <div class="pane side-pane">
-            <LevelBar :levels="levelStats" />
-            <TrendLine
-              class="mt"
-              :metric="metric"
-              :series="trendSeries"
-              :dates="trendDates"
-            />
-            <RadialPollutant class="mt" :data="radialVector" />
-          </div>
-        </section>
-
-        <section class="layout secondary">
-          <div class="pane">
-            <SeasonalLevelStack
-              :dates="levelTimeline.dates"
-              :series="levelTimeline.series"
-              :metric="metric"
-              @select-date="handleDateChange"
-            />
-          </div>
-          <div class="pane">
-            <CorrHeatmap :matrix="corrMatrix" />
-          </div>
-        </section>
-
-        <section class="layout secondary">
-          <div class="pane">
-            <ParallelAQI :rows="parallelRows" @select="handleParallelSelect" />
-            <div class="parallel-actions">
-              <span>当前维度：{{ parallelLevel === "province" ? "省均值" : `城市（${parallelProvince || "未选"}` }} </span>
-              <button @click="resetParallel">重置到省</button>
+            <div class="pane">
+              <AQIRanking :items="aqiRanking" @select="handleRankingSelect" />
             </div>
-          </div>
-          <div class="pane">
-            <AQIRanking :items="aqiRanking" @select="handleRankingSelect" />
-          </div>
-        </section>
+          </section>
 
-        <section class="layout secondary">
-          <div class="pane">
-            <CityStackedPie
-              :city="selectedCity"
-              :day-values="cityDayValues"
-              :month-stats="cityMonthStats"
-              :month="currentDate.slice(0, 7)"
-            />
-          </div>
-          <div class="pane">
-            <CityTypeRibbon
-              :dates="cityTypeRibbon.dates"
-              :series="cityTypeRibbon.series"
-              :type-order="cityTypeRibbon.typeOrder"
-              :province="selectedRegion"
-            />
-          </div>
-        </section>
+          <section class="layout secondary">
+            <div class="pane">
+              <CityStackedPie
+                :city="selectedCity"
+                :day-values="cityDayValues"
+                :month-stats="cityMonthStats"
+                :month="currentDate.slice(0, 7)"
+              />
+            </div>
+            <div class="pane">
+              <CityTypeRibbon
+                :dates="cityTypeRibbon.dates"
+                :series="cityTypeRibbon.series"
+                :type-order="cityTypeRibbon.typeOrder"
+                :province="selectedRegion"
+              />
+            </div>
+          </section>
+        </template>
+
+        <!-- 月份视图 -->
+        <template v-else-if="viewMode === 'monthly'">
+          <MonthView
+            :current-year="monthViewYear"
+            :available-years="availableYears"
+            :metric="monthViewMetric"
+            :selected-region="selectedRegion"
+            @update:region="handleMapSelect"
+            @select-month="handleMonthSelect"
+            @update:metric="monthViewMetric = $event"
+            @update:currentYear="monthViewYear = $event"
+          />
+        </template>
       </template>
 
       <template v-else-if="isStory">
@@ -148,6 +178,7 @@
           :map-mode="mapMode"
           @select-metric="metric = $event"
           @toggle-map-mode="mapMode = $event"
+          @reset-region="selectedRegion = ''"
         />
         <section class="story-hero">
           <div class="story-visual">
@@ -187,9 +218,22 @@
           <div class="section-badge">类型分析</div>
           <div class="section-meta">类型地图 · 聚类散点 · 类型演化</div>
         </div>
+
+        <ControlPanel
+          class="pane"
+          :date="currentDate"
+          :region="selectedRegion || '全国'"
+          :rows="dayData"
+          :metric="metric"
+          :map-mode="mapMode"
+          @select-metric="metric = $event"
+          @toggle-map-mode="mapMode = $event"
+          @reset-region="selectedRegion = ''"
+        />
+
         <section class="layout secondary">
           <div class="pane map-pane">
-            <TypeMap :items="typeMapData" />
+            <TypeMap :items="typeMapData" :selected-name="selectedRegion" />
           </div>
           <div class="pane">
             <TypeScatter :points="typeScatter" @select="handleTypeSelect" />
@@ -258,8 +302,8 @@
         <div class="monthly-controls">
           <div class="time-selector">
             <label>年份：</label>
-            <select v-model="selectedYear" @change="handleYearChange">
-              <option v-for="year in availableYears" :key="year" :value="year">{{ year }}年</option>
+            <select v-model="selectedYear" @change="handleMonthlyYearChange">
+              <option v-for="year in monthlyAvailableYears" :key="year" :value="year">{{ year }}年</option>
             </select>
 
             <label>月份：</label>
@@ -430,9 +474,10 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch, provide } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import TimeControls from "./components/TimeControls.vue";
+import YearControls from "./components/YearControls.vue";
 import MapPanel from "./components/MapPanel.vue";
 import ControlPanel from "./components/ControlPanel.vue";
 import TrendLine from "./components/TrendLine.vue";
@@ -453,6 +498,7 @@ import WindCompass from "./components/WindCompass.vue";
 import PollutantRingGrid from "./components/PollutantRingGrid.vue";
 import CityStackedPie from "./components/CityStackedPie.vue";
 import CityTypeRibbon from "./components/CityTypeRibbon.vue";
+import MonthView from "./components/MonthView.vue";
 import {
   classifyLevels,
   computeRadialVector,
@@ -480,6 +526,14 @@ import {
   computeMonthlyRingGrid,
   computeCityMonthStats,
   computeCityTypeTrajectory,
+  loadAvailableYears,
+  loadDataByGranularity,
+  getAvailableDatesByGranularity,
+  computeTrendSeriesByGranularity,
+  computeLevelTimelineByGranularity,
+  loadGridData,     // <--- 确保引入
+  gridToScatter,    // <--- 确保引入
+  normalizeProvince,
 } from "./utils/dataLoader";
 
 const granularity = ref("day");
@@ -491,64 +545,45 @@ const allDays = ref([]);
 const route = useRoute();
 const router = useRouter();
 const regionIndex = ref(null);
+const gridData = ref([]);
 
-function normalizeProvince(name) {
-  if (!name) return "";
-  let n = String(name).split("|").pop().trim();
+// 视图模式：daily 或 monthly
+const viewMode = ref("daily");
 
-  const direct = {
-    北京: "北京市",
-    天津: "天津市",
-    上海: "上海市",
-    重庆: "重庆市",
-    "内蒙古自治区": "内蒙古自治区",
-    内蒙古: "内蒙古自治区",
-    "广西壮族自治区": "广西壮族自治区",
-    广西: "广西壮族自治区",
-    "新疆维吾尔自治区": "新疆维吾尔自治区",
-    新疆: "新疆维吾尔自治区",
-    "宁夏回族自治区": "宁夏回族自治区",
-    宁夏: "宁夏回族自治区",
-    "西藏自治区": "西藏自治区",
-    西藏: "西藏自治区",
-    "香港特别行政区": "香港特别行政区",
-    香港: "香港特别行政区",
-    "澳门特别行政区": "澳门特别行政区",
-    澳门: "澳门特别行政区",
-    "中国香港": "香港特别行政区",
-    "中國香港": "香港特别行政区",
-    "中国澳门": "澳门特别行政区",
-    "中國澳門": "澳门特别行政区",
-    "台湾省": "台湾省",
-    台湾: "台湾省",
-    "黑龙江省": "黑龙江省",
-    "黑龍江省": "黑龙江省",
-  };
-  if (direct[n]) return direct[n];
+const monthViewYear = ref("2013");
+const monthViewMetric = ref("pm25");
 
-  // Strip common suffixes, then append “省”
-  n = n.replace(/省|市|自治区|壮族自治区|维吾尔自治区|回族自治区|特别行政区/g, "").trim();
-  if (!n) return "";
-  return `${n}省`;
-}
+// 新增年份相关变量
+const currentYear = ref("2013");
+const availableYears = ref(["2013"]);
 
-function aggregateMap(rows, metricName) {
+
+
+function aggregateMap(rows, metricName, granularity = "day") {
+  console.log(`[DataDebug] 聚合地图数据: metricName=${metricName}, granularity=${granularity}, rows.length=${rows.length}`);
   const sums = new Map();
   const counts = new Map();
   for (const row of rows) {
     const prov = normalizeProvince(row.province);
-    const val = Number(row[metricName] ?? 0);
+    // 使用新的字段适配逻辑
+    const actualField = granularity === "day" ? metricName :
+                       granularity === "month" ? `${metricName}_mean` :
+                       granularity === "year" ? `${metricName}_yearly_mean` : metricName;
+    const val = Number(row[actualField] ?? 0);
+    // console.log(`[DataDebug] 聚合行: province=${row.province}, normalized=${prov}, field=${actualField}, value=${val}`);
     if (!prov || Number.isNaN(val)) continue;
     sums.set(prov, (sums.get(prov) || 0) + val);
     counts.set(prov, (counts.get(prov) || 0) + 1);
   }
-  return Array.from(sums.entries()).map(([prov, sum]) => ({
+  const result = Array.from(sums.entries()).map(([prov, sum]) => ({
     name: prov,
     value: sum / (counts.get(prov) || 1),
   }));
+  console.log(`[DataDebug] 聚合结果:`, result);
+  return result;
 }
 
-const mapSeries = computed(() => aggregateMap(dayData.value, metric.value));
+const mapSeries = computed(() => aggregateMap(dayData.value, metric.value, granularity.value));
 
 const levelStats = computed(() =>
   classifyLevels(dayData.value, metric.value)
@@ -557,13 +592,13 @@ const levelStats = computed(() =>
 const radialVector = computed(() => computeRadialVector(dayData.value));
 
 const trendSeries = computed(() =>
-  computeTrendSeries(allDays.value, metric.value)
+  computeTrendSeriesByGranularity(allDays.value, metric.value, granularity.value)
 );
 
 const trendDates = computed(() => allDays.value.map((item) => item.date));
 
 const levelTimeline = computed(() =>
-  computeLevelTimeline(allDays.value, metric.value)
+  computeLevelTimelineByGranularity(allDays.value, metric.value, granularity.value)
 );
 
 const corrMatrix = computed(() =>
@@ -591,6 +626,7 @@ const cityMonthStats = computed(() =>
   computeCityMonthStats(allDays.value, selectedCity.value, currentMonth.value)
 );
 const cityDayValues = computed(() => {
+  console.log(`[DataDebug] 计算城市日均值: selectedCity=${selectedCity.value}, granularity=${granularity.value}, data.length=${dayData.value.length}`);
   if (!selectedCity.value && !dayData.value.length) return {};
   const target = normalizeProvince(selectedCity.value) || normalizeProvince(dayData.value[0]?.city) || "";
   const row =
@@ -599,14 +635,28 @@ const cityDayValues = computed(() => {
         normalizeProvince(r.city) === target ||
         normalizeProvince(r.province) === target
     ) || dayData.value[0] || {};
-  return {
-    pm25: row.pm25,
-    pm10: row.pm10,
-    so2: row.so2,
-    no2: row.no2,
-    co: row.co,
-    o3: row.o3,
+
+  console.log(`[DataDebug] 找到的目标行:`, row);
+
+  // 根据粒度获取正确的字段
+  const getFieldValue = (field) => {
+    if (granularity.value === "day") return row[field];
+    if (granularity.value === "month") return row[`${field}_mean`];
+    if (granularity.value === "year") return row[`${field}_yearly_mean`];
+    return row[field];
   };
+
+  const result = {
+    pm25: getFieldValue("pm25"),
+    pm10: getFieldValue("pm10"),
+    so2: getFieldValue("so2"),
+    no2: getFieldValue("no2"),
+    co: getFieldValue("co"),
+    o3: getFieldValue("o3"),
+  };
+
+  console.log(`[DataDebug] 城市日均值结果:`, result);
+  return result;
 });
 
 const cityTypeRibbon = computed(() =>
@@ -635,13 +685,22 @@ const typeScatter = computed(() => buildTypeScatter(dayData.value, "city"));
 const typeTimeline = computed(() => computeTypeTimeline(allDays.value, "city", selectedRegion.value || null));
 
 const weatherMetric = ref("wind");
-const weatherMapSeries = computed(() => aggregateMap(dayData.value, weatherMetric.value));
+const weatherMapSeries = computed(() => aggregateMap(dayData.value, weatherMetric.value, granularity.value));
 const weatherMetricLabel = computed(() => {
   const map = { wind: "风速", temp: "气温", rh: "湿度", psfc: "气压" };
   return map[weatherMetric.value] || weatherMetric.value.toUpperCase();
 });
 
 const scatterPoints = computed(() => {
+  // 如果有网格数据，优先使用网格数据进行渲染
+  if (gridData.value && gridData.value.length > 0) {
+    const targetMetric = mapMode.value === "weather" ? weatherMetric.value : metric.value;
+    // 如果是风速模式，通常不画散点，画箭头；但如果想看风速点也可以保留
+    if (mapMode.value === "weather" && weatherMetric.value === "wind") return []; 
+    return gridToScatter(gridData.value, targetMetric);
+  }
+
+  // 降级回退到城市数据 (旧逻辑)
   if (!regionIndex.value) return [];
   if (mapMode.value === "weather" && weatherMetric.value === "wind") return [];
   return rowsToScatter(
@@ -651,25 +710,49 @@ const scatterPoints = computed(() => {
   );
 });
 
-const windVectors = computed(() =>
-  regionIndex.value && mapMode.value === "weather" && weatherMetric.value === "wind"
-    ? buildWindVectors(dayData.value, regionIndex.value, 0.3)
-    : []
-);
-const windFlow = computed(() =>
-  regionIndex.value && mapMode.value === "weather" && weatherMetric.value === "wind"
-    ? buildWindFlow(dayData.value, regionIndex.value, 0.35, 4)
-    : []
-);
-const heatmapPoints = computed(() =>
-  mapMode.value === "pollution" && regionIndex.value
-    ? rowsToScatter(dayData.value, metric.value, regionIndex.value).map((d) => [
+// 风场箭头 (Wind Vectors)
+const windVectors = computed(() => {
+  if (mapMode.value === "weather" && weatherMetric.value === "wind") {
+    // 优先使用网格数据
+    const source = (gridData.value && gridData.value.length > 0) ? gridData.value : dayData.value;
+    const index = (gridData.value && gridData.value.length > 0) ? null : regionIndex.value; // 网格数据不需要 index
+    return buildWindVectors(source, index, 0.10);
+  }
+  return [];
+});
+
+// 风场流线 (Wind Flow)
+const windFlow = computed(() => {
+  if (mapMode.value === "weather" && weatherMetric.value === "wind") {
+    // 优先使用网格数据
+    const source = (gridData.value && gridData.value.length > 0) ? gridData.value : dayData.value;
+    const index = (gridData.value && gridData.value.length > 0) ? null : regionIndex.value;
+    // 网格数据较密，流线密度参数(density)可以适当调低，这里设为 1 或 2
+    return buildWindFlow(source, index, 0.35, 2);
+  }
+  return [];
+});
+
+// 热力图数据 (Heatmap)
+const heatmapPoints = computed(() => {
+  if (mapMode.value === "pollution") {
+    // 优先使用网格数据
+    if (gridData.value && gridData.value.length > 0) {
+      // 复用 gridToScatter 逻辑并转换格式 [lon, lat, value]
+      return gridToScatter(gridData.value, metric.value).map(p => [p.coord[0], p.coord[1], p.value]);
+    }
+    
+    // 回退旧逻辑
+    if (regionIndex.value) {
+      return rowsToScatter(dayData.value, metric.value, regionIndex.value).map((d) => [
         d.coord[0],
         d.coord[1],
         d.value,
-      ])
-    : []
-);
+      ]);
+    }
+  }
+  return [];
+});
 
 const yearlyRings = computed(() => computeYearlyRadial(allDays.value));
 const monthlyRings = computed(() => computeMonthlyRing(allDays.value));
@@ -723,32 +806,114 @@ const storyMood = computed(() => {
 });
 
 async function bootstrap() {
-  const index = await loadIndex();
-  availableDates.value = index.days;
-  currentDate.value = index.days[0] || "2013-01-01";
-
-  // Preload all days for the trend line if the index is present.
-  const loadedAll = [];
-  for (const day of index.days) {
-    const data = await loadOneDay(day);
-    if (data.length) {
-      loadedAll.push({ date: day, data });
-    }
+  // 初始化默认选中区域
+  if (viewMode.value === 'monthly') {
+    selectedRegion.value = "长沙市";
+  } else {
+    selectedRegion.value = ""; // 日均视图默认全国
   }
-  allDays.value = loadedAll;
 
-  const first = await loadOneDay(currentDate.value);
-  dayData.value = first;
+  // 加载可用年份
+  const years = await loadAvailableYears();
+  availableYears.value = years;
+  if (!years.includes(currentYear.value)) {
+    currentYear.value = years[0] || "2013";
+  }
+
+  // 加载当前年份的数据
+  await loadDataForCurrentGranularity();
 
   regionIndex.value = await loadRegionIndex();
 
   startStoryLoop();
 }
 
+// 加载当前粒度的数据
+async function loadDataForCurrentGranularity() {
+  try {
+    // 获取当前粒度的可用日期
+    const dates = await getAvailableDatesByGranularity(granularity.value, currentYear.value);
+    availableDates.value = dates;
+
+    // 设置默认日期
+    if (!currentDate.value || !dates.includes(currentDate.value)) {
+      currentDate.value = dates[0] || `${currentYear.value}-01-01`;
+    }
+
+    // 加载当前日期的数据
+    if (granularity.value === "day") {
+      const data = await loadDataByGranularity("day", currentYear.value, currentDate.value);
+      dayData.value = data;
+
+      // (2) 【新增】并发加载网格数据 (用于地图展示)
+      // 注意：网格数据量大，加载可能稍慢
+      console.log(`[App] Loading grid data for ${currentDate.value}...`);
+      const grid = await loadGridData(currentDate.value);
+      gridData.value = grid; // 保存网格数据
+
+      // 预加载所有天的数据用于趋势线
+      const loadedAll = [];
+      for (const day of dates) {
+        const dayData = await loadDataByGranularity("day", currentYear.value, day);
+        if (dayData.length) {
+          loadedAll.push({ date: day, data: dayData });
+        }
+      }
+      allDays.value = loadedAll;
+    } else {
+      // 非日粒度时，清空网格数据 (假设目前只有日粒度有网格)
+      gridData.value = [];
+      // 对于月度和年度数据，直接加载当前选择的数据
+      const data = await loadDataByGranularity(granularity.value, currentYear.value, currentDate.value);
+      dayData.value = data;
+
+      // 对于月度，加载全年所有月份用于趋势
+      if (granularity.value === "month") {
+        const loadedAll = [];
+        for (const month of dates) {
+          const monthData = await loadDataByGranularity("month", currentYear.value, month);
+          if (monthData.length) {
+            loadedAll.push({ date: month, data: monthData });
+          }
+        }
+        allDays.value = loadedAll;
+      } else {
+        // 年粒度只有一个数据点
+        allDays.value = [{ date: currentYear.value, data }];
+      }
+    }
+  } catch (error) {
+    console.error("Failed to load data:", error);
+    dayData.value = [];
+    allDays.value = [];
+  }
+}
+
 async function handleDateChange(value) {
   currentDate.value = value;
-  const data = await loadOneDay(value);
-  dayData.value = data;
+  if (granularity.value === "day") {
+    const data = await loadDataByGranularity("day", currentYear.value, value);
+    dayData.value = data;
+  } else {
+    // 对于月度和年度，直接重新加载
+    await loadDataForCurrentGranularity();
+  }
+}
+
+async function handleYearChange(value) {
+  if (viewMode.value === 'daily') {
+    // 日均视图模式：更新 currentYear 并重新加载数据
+    currentYear.value = value;
+    await loadDataForCurrentGranularity();
+  } else {
+    // 月份视图模式：只更新 monthViewYear，MonthView 组件内部会监听并自动刷新
+    monthViewYear.value = value;
+  }
+}
+
+async function handleGranularityChange(value) {
+  granularity.value = value;
+  await loadDataForCurrentGranularity();
 }
 
 function handleRankingSelect(name) {
@@ -773,6 +938,11 @@ function resetParallel() {
 
 function handleTypeSelect(name) {
   selectedRegion.value = name;
+}
+
+function handleMonthSelect(month) {
+  // 可以在这里处理月份选择逻辑
+  console.log(`Selected month: ${month}`);
 }
 
 function startStoryLoop() {
@@ -804,6 +974,37 @@ onBeforeUnmount(() => {
   stopStoryLoop();
 });
 
+// 【新增】提供一个修改方法给后代组件使用
+const setSelectedRegion = (name) => {
+  console.log("更新选中区域:", name); // 方便调试
+  selectedRegion.value = name;
+};
+provide('setSelectedRegion', setSelectedRegion);
+
+// 【新增】监听路由变化，实现视图状态隔离
+watch(() => route.path, (newPath, oldPath) => {
+  // 只要切换了顶层导航（路由），就重置选中区域
+  if (newPath !== oldPath) {
+    // 月视图默认长沙市，其他视图（包括日视图和类型分析视图）默认全国
+    if (viewMode.value === 'monthly') {
+      selectedRegion.value = "长沙市";
+    } else {
+      selectedRegion.value = ""; // 日视图和类型分析视图都默认全国
+    }
+    console.log("视图切换，设置 selectedRegion:", selectedRegion.value);
+  }
+});
+
+watch(viewMode, () => {
+  // 切换到月视图时，设置默认选中长沙市
+  if (viewMode.value === 'monthly') {
+    selectedRegion.value = "长沙市";
+  } else {
+    selectedRegion.value = "";
+  }
+  console.log("视图模式切换(日/月)，设置 selectedRegion:", selectedRegion.value);
+});
+
 watch(metric, () => {
   // Metric change just reuses loaded data; computed props react automatically.
 });
@@ -829,7 +1030,7 @@ const selectedYear = ref("2013");
 const selectedMonth = ref("01");
 const monthlyMetric = ref("pm25");
 const monthlyData = ref([]);
-const availableYears = getAvailableYears();
+const monthlyAvailableYears = getAvailableYears();
 const availableMonths = getAvailableMonths();
 
 // 计算属性
@@ -889,7 +1090,7 @@ const monthlyRadarData = computed(() => {
 });
 
 // 事件处理
-async function handleYearChange() {
+async function handleMonthlyYearChange() {
   await loadCurrentMonthlyData();
 }
 
@@ -1121,6 +1322,37 @@ h1 {
   flex-direction: column;
   gap: 8px;
   align-items: flex-end;
+}
+
+.view-controls {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.view-toggle {
+  display: inline-flex;
+  gap: 4px;
+  background: rgba(47, 126, 87, 0.08);
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid rgba(47, 126, 87, 0.16);
+}
+
+.view-toggle button {
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 12px;
+}
+
+.view-toggle button.active {
+  color: #0f172a;
+  background: linear-gradient(120deg, #2f7e57, #8bbf5f);
+  box-shadow: 0 6px 14px rgba(47, 126, 87, 0.18);
 }
 
 .tabs {

@@ -13,18 +13,23 @@
       </div>
     </div>
     <div class="chart" v-if="mapReady">
-      <VChart :option="option" autoresize />
+      <VChart :option="option" autoresize @click="handleClick" />
     </div>
     <div v-else class="placeholder">地图加载中，请检查 /public/china.json</div>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref , watch , inject} from "vue";
 import { registerMap } from "echarts/core";
 
 const props = defineProps({
   items: { type: Array, default: () => [] }, // [{name, type, primary}]
+  data: { type: Array, default: () => [] },
+  title: { type: String, default: "主导类型分布" },
+  selectedName: { type: String, default: "" },
+  // 【新增】接收地图名称，默认为 'china'
+  mapName: { type: String, default: "china" }
 });
 
 const colors = {
@@ -43,19 +48,26 @@ const legendItems = computed(() =>
   Object.entries(colors).map(([label, color]) => ({ label, color }))
 );
 
+const setSelectedRegion = inject('setSelectedRegion');
+
 const option = computed(() => {
-  const data = props.items.map((d) => {
+  const pData = props.data || [];   // 如果 props.data 为 undefined，赋值为 []
+  const pItems = props.items || []; // 同理
+  const sourceData = pData.length > 0 ? pData : pItems;
+  const data = sourceData.map((d) => {
     const type = d.type || "未知";
     const color = colors[type] || "#e5e7eb";
+    const isSelected = d.name === props.selectedName;
     return {
       name: d.name,
       value: 1,
       type,
       primary: (d.primary || "-").toUpperCase?.() || "-",
       itemStyle: {
-        areaColor: color,
-        color,
-        borderColor: "#d1d5db",
+        areaColor: isSelected ? 'rgba(59, 130, 246, 0.3)' : color, // 选中区域半透明蓝色
+        color: isSelected ? 'rgba(59, 130, 246, 0.3)' : color,
+        borderColor: isSelected ? "#3b82f6" : "#d1d5db", // 选中区域蓝色边框
+        borderWidth: isSelected ? 2 : 1,
       },
     };
   });
@@ -73,11 +85,23 @@ const option = computed(() => {
     series: [
       {
         type: "map",
-        map: "china",
+        map: props.mapName,
         data,
         roam: true,
         emphasis: { label: { show: false } },
         zoom: 1.05,
+        selectedMode: "single",
+        // 绑定 props.selectedName，让地图初始化时自动高亮对应的区域
+        selected: props.selectedName ? { [props.selectedName]: true } : {},
+        select: {
+          itemStyle: {
+            borderColor: "#1f2937", // 深色边框
+            borderWidth: 3,         // 加粗
+            shadowColor: "rgba(0, 0, 0, 0.5)",
+            shadowBlur: 10,
+          },
+          label: { show: false },   // 选中时不强制显示文字
+        },
         itemStyle: {
           borderColor: "rgba(31,41,55,0.16)",
           borderWidth: 1,
@@ -94,7 +118,7 @@ const option = computed(() => {
       },
       {
         type: "map",
-        map: "china",
+        map: props.mapName,
         data: data.map((d) => ({
           ...d,
           itemStyle: {
@@ -111,6 +135,15 @@ const option = computed(() => {
     ],
   };
 });
+
+function handleClick(params) {
+  // params.name 是点击区域的名称 (如 "北京市", "廊坊市")
+  // 确保点击有效且注入的方法存在
+  if (params.name && setSelectedRegion) {
+    console.log("TypeMap 点击:", params.name);
+    setSelectedRegion(params.name);
+  }
+}
 
 const MAP_PATHS = [
   "/china.json",
@@ -136,7 +169,13 @@ async function loadMap() {
 }
 
 onMounted(() => {
-  loadMap();
+  // 【修改4】如果是默认的 china 地图，则执行内部加载逻辑
+  // 如果是外部传入的地图（如 china_cities），假设父组件已加载完毕，直接置为 true
+  if (props.mapName === 'china') {
+    loadMap();
+  } else {
+    mapReady.value = true;
+  }
 });
 </script>
 

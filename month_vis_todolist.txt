@@ -1,0 +1,57 @@
+# 月度数据可视化开发任务清单 (To-Do List)
+
+## 1. 数据层 (Data Layer) - src/utils/dataLoader.js
+- [ ] **增强 `loadOneYear` / `loadMonthlyIndex`**
+    - 目标：除了返回简单的月均值，还需要支持获取“该月内所有天的数据”。
+    - 结构需求：构建类似 `[{ month: 1, days: [..日数据..], avg: ... }]` 的结构。
+    - 用途：为箱线图（BoxPlot）计算中位数、四分位数和极值提供原始数据。
+
+## 2. 组件改造 (Component Refactoring)
+- [ ] **`src/components/SeasonalLevelStack.vue` (重点改造)**
+    - [ ] 修改数据接收逻辑：使其能接收“按月分组”的数据。
+    - [ ] 视图逻辑：X 轴固定为 1-12 月，Y 轴堆叠显示每个月内“优、良、轻度、中度...”各有多少天。
+    - [ ] 目的：展示一年中每个月的污染结构变化。
+
+- [ ] **`src/components/AQICompareLine.vue` (重点改造)**
+    - [ ] 修改 X 轴逻辑：从“1月逐日”改为“1-12 月”。
+    - [ ] 数据逻辑：对比不同年份（如 2013 vs 2014）的月均 AQI 曲线。
+    - [ ] 目的：回答“今年是否比去年同期有改善”。
+
+- [ ] **`src/components/LevelBar.vue` (逻辑调整)**
+    - [ ] 月度模式下：不统计“有多少个月是优”，而是统计“选定月份内，30天里有多少天是优”。
+    - [ ] 目的：避免因样本数太少（仅12个）导致图表稀疏。
+
+## 3. 新增组件 (New Components)
+- [ ] **新建 `src/components/MonthlyBoxPlot.vue` (箱线图)**
+    - [ ] 技术栈：使用 ECharts `series: 'boxplot'`。
+    - [ ] 布局：X 轴 1-12 月，Y 轴为污染物浓度。
+    - [ ] 数据处理：前端计算每月数据的 [min, Q1, median, Q3, max]。
+    - [ ] 价值：解决平均值掩盖极端污染天的问题，展示每月的波动范围。
+
+- [ ] **(可选) 新建 `src/components/ClimatePollutionChart.vue` (双轴图)**
+    - [ ] 布局：左轴柱状图（月均污染），右轴折线图（月均气温/降水）。
+    - [ ] 价值：分析气象条件（如冬暖、夏雨）对污染的影响。
+
+## 4. 现有组件直接复用 (Direct Reuse)
+- [ ] **`TrendLine.vue`**：传入月均数据序列，展示年度走势。
+- [ ] **`MapPanel.vue`**：传入各省/市的月均值，展示空间分布。
+- [ ] **`AQIRanking.vue`**：传入月均值，展示当月最差/最好城市。
+- [ ] **`RadialPollutant.vue`**：展示当月污染物构成（雷达图）。
+- [ ] **`WindCompass.vue`**：展示当月盛行风向（玫瑰图）。
+
+## 5. 页面集成 (Integration) - src/App.vue
+- [ ] **状态管理**
+    - [ ] 监听 `granularity` (粒度) 变化。
+    - [ ] 确保切换到 "month" 时，重新加载对应的数据结构。
+
+- [ ] **视图切换**
+    - [ ] 当 `granularity === 'month'` 时：
+        - 隐藏/替换不适合的日级图表（如原始的日历热力图）。
+        - 挂载 `MonthlyBoxPlot`。
+        - 切换 `SeasonalLevelStack` 为月度模式。
+
+## 6. 预期效果检查
+- [ ] 能看到 1-12 月的污染趋势线。
+- [ ] 能看到每个月的污染波动范围（箱线图）。
+- [ ] 能看到每个月的优良天数比例（堆叠图）。
+- [ ] 能对比不同年份的月均变化。
