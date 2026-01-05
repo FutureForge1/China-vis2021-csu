@@ -9,6 +9,7 @@ const routes = [
   { path: "/types", name: "types", component: EmptyView },
   { path: "/trends", name: "trends", component: EmptyView },
   { path: "/monthly", name: "monthly", component: EmptyView },
+  { path: "/yearly", name: "yearly", component: EmptyView },
 ];
 
 const router = createRouter({

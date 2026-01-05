@@ -20,8 +20,8 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref , watch , inject} from "vue";
 import { registerMap } from "echarts/core";
+import { computed, inject, onMounted, ref } from "vue";
 
 const props = defineProps({
   items: { type: Array, default: () => [] }, // [{name, type, primary}]
@@ -33,13 +33,13 @@ const props = defineProps({
 });
 
 const colors = {
-  标准型: "#a3d9c9",
-  偏二次型: "#9cb8f5",
-  偏燃煤型: "#f6c173",
-  偏交通型: "#6ccdc0",
-  偏燃烧型: "#c7a0ff",
-  偏颗粒物型: "#f69b9b",
-  未知: "#e5e7eb",
+  标准型: "#4ade80",
+  偏二次型: "#60a5fa",
+  偏燃煤型: "#fbbf24",
+  偏交通型: "#2dd4bf",
+  偏燃烧型: "#a78bfa",
+  偏颗粒物型: "#f87171",
+  未知: "#475569",
 };
 
 const mapReady = ref(false);
@@ -66,8 +66,8 @@ const option = computed(() => {
       itemStyle: {
         areaColor: isSelected ? 'rgba(59, 130, 246, 0.3)' : color, // 选中区域半透明蓝色
         color: isSelected ? 'rgba(59, 130, 246, 0.3)' : color,
-        borderColor: isSelected ? "#3b82f6" : "#d1d5db", // 选中区域蓝色边框
-        borderWidth: isSelected ? 2 : 1,
+        borderColor: isSelected ? "#60a5fa" : "rgba(0,0,0,0.1)", // 选中区域蓝色边框
+        borderWidth: isSelected ? 2 : 0.5,
       },
     };
   });

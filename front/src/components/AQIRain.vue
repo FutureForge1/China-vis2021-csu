@@ -21,22 +21,43 @@ const props = defineProps({
 const option = computed(() => ({
   backgroundColor: "transparent",
   tooltip: {
+    backgroundColor: "rgba(255,255,255,0.95)",
+    borderColor: "#FFE600",
+    borderWidth: 1,
+    textStyle: {
+      color: "#0a0a0a",
+      fontFamily: "JetBrains Mono",
+      fontSize: 12
+    },
     formatter: (p) => {
       const level = props.matrix.levels[p.data[0]];
       const year = props.matrix.years[p.data[1]];
-      return `${year} 年<br/>等级：${level}<br/>省份-天数：${p.data[2]}`;
+      return `<div style="border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-bottom: 4px; color: #FFE600; font-weight: bold;">${year}</div>
+              <div style="display: flex; justify-content: space-between; gap: 12px;">
+                <span>LEVEL:</span>
+                <span style="font-weight: bold; color: #0a0a0a;">${level}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; gap: 12px;">
+                <span>COUNT:</span>
+                <span style="font-weight: bold; color: #0a0a0a;">${p.data[2]}</span>
+              </div>`;
     },
   },
-  grid: { top: 40, left: 70, right: 20, bottom: 50 },
+  grid: { top: 20, left: 50, right: 20, bottom: 40 },
   xAxis: {
     type: "category",
     data: props.matrix.levels,
-    axisLabel: { color: "#cdd9e5" },
+    axisLabel: { color: "#666", fontFamily: "JetBrains Mono", fontSize: 10 },
+    axisLine: { lineStyle: { color: "#ddd" } },
+    axisTick: { show: false }
   },
   yAxis: {
     type: "category",
     data: props.matrix.years.map((y) => String(y)),
-    axisLabel: { color: "#cdd9e5" },
+    axisLabel: { color: "#666", fontFamily: "JetBrains Mono", fontSize: 10 },
+    axisLine: { show: false },
+    axisTick: { show: false },
+    splitLine: { show: false }
   },
   visualMap: {
     min: 0,
@@ -44,16 +65,22 @@ const option = computed(() => ({
     calculable: true,
     orient: "horizontal",
     left: "center",
-    bottom: 10,
+    bottom: 0,
+    itemWidth: 10,
+    itemHeight: 100,
     inRange: { color: ["#22c55e", "#a3e635", "#facc15", "#f97316", "#ef4444", "#7f1d1d"] },
-    textStyle: { color: "#cdd9e5" },
+    textStyle: { color: "#666", fontFamily: "JetBrains Mono", fontSize: 10 },
   },
   series: [
     {
       name: "AQI-Level",
       type: "heatmap",
       data: props.matrix.data,
-      label: { show: true, color: "#0f172a" },
+      label: { show: true, color: "#000", fontFamily: "JetBrains Mono", fontSize: 10 },
+      itemStyle: {
+        borderColor: "#000",
+        borderWidth: 1
+      }
     },
   ],
 }));
@@ -64,17 +91,32 @@ const option = computed(() => ({
   display: flex;
   flex-direction: column;
   gap: 6px;
+  height: 100%;
 }
 .heading {
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  gap: 8px;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 4px;
+}
+h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: bold;
+  color: #0a0a0a;
+  font-family: "Oswald", sans-serif;
+  letter-spacing: 1px;
+  text-transform: uppercase;
 }
 .sub {
-  color: #9eb1c7;
-  font-size: 12px;
+  color: #FFE600;
+  font-size: 10px;
+  font-family: "JetBrains Mono", monospace;
+  text-transform: uppercase;
 }
 .chart {
-  height: 260px;
+  flex: 1;
+  min-height: 0;
 }
 </style>

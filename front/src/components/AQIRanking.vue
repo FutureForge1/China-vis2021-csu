@@ -1,8 +1,8 @@
 <template>
   <div class="wrap">
     <div class="heading">
-      <h3>AQI 排行</h3>
-      <span class="sub">按省均值</span>
+      <h3>AQI RANKING</h3>
+      <span class="sub">BY PROVINCE MEAN</span>
     </div>
     <VChart :option="option" autoresize class="chart" />
   </div>
@@ -28,26 +28,53 @@ const option = computed(() => {
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "shadow" },
+      backgroundColor: "rgba(20, 20, 20, 0.9)",
+      borderColor: "rgba(255, 255, 255, 0.15)",
+      textStyle: { color: "#0a0a0a", fontFamily: 'JetBrains Mono' },
       formatter: (p) => {
         const i = p[0].dataIndex;
-        return `${names[i]}<br/>AQI: ${values[i]}<br/>主导: ${primary[i]}`;
+        return `<div style="font-weight:bold; font-family: 'Oswald'">${names[i]}</div>
+                <div style="font-size:12px">AQI: ${values[i]}</div>
+                <div style="font-size:12px">PRIMARY: ${primary[i]}</div>`;
       },
     },
-    grid: { left: 80, right: 20, top: 10, bottom: 10 },
-    xAxis: { type: "value", axisLabel: { color: "#cdd9e5" } },
+    grid: { left: 80, right: 30, top: 10, bottom: 10 },
+    xAxis: {
+      type: "value",
+      axisLabel: { color: "#666", fontFamily: 'JetBrains Mono' },
+      splitLine: { lineStyle: { color: "rgba(0,0,0,0.05)" } },
+    },
     yAxis: {
       type: "category",
       data: names,
-      axisLabel: { color: "#cdd9e5" },
+      axisLabel: { color: "#666", fontFamily: 'JetBrains Mono' },
+      axisLine: { lineStyle: { color: "rgba(0,0,0,0.1)" } },
     },
     series: [
       {
         type: "bar",
         data: values,
         itemStyle: {
-          color: (p) => colors[p.dataIndex],
+          color: (p) => ({
+            type: "linear",
+            x: 0,
+            y: 0,
+            x2: 1,
+            y2: 0,
+            colorStops: [
+              { offset: 0, color: colors[p.dataIndex] + "88" },
+              { offset: 1, color: colors[p.dataIndex] },
+            ],
+          }),
+          borderRadius: [0, 0, 0, 0], // Industrial sharp corners
         },
-        label: { show: true, position: "right", color: "#e6edf3" },
+        label: {
+          show: true,
+          position: "right",
+          color: "#0a0a0a",
+          fontSize: 10,
+          fontFamily: 'JetBrains Mono'
+        },
       },
     ],
     on: {
@@ -60,12 +87,12 @@ const option = computed(() => {
 });
 
 function aqiColor(v) {
-  if (v <= 50) return "#22c55e";
-  if (v <= 100) return "#a3e635";
-  if (v <= 150) return "#facc15";
-  if (v <= 200) return "#f97316";
-  if (v <= 300) return "#ef4444";
-  return "#7f1d1d";
+  if (v <= 50) return "#ddd333";
+  if (v <= 100) return "#665c00";
+  if (v <= 150) return "#998a00";
+  if (v <= 200) return "#ccb800";
+  if (v <= 300) return "#e6cf00";
+  return "#FFE600";
 }
 </script>
 
@@ -73,16 +100,26 @@ function aqiColor(v) {
 .wrap {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
 }
 .heading {
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  gap: 10px;
+  border-bottom: 1px solid var(--c-border);
+  padding-bottom: 5px;
+}
+h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 16px;
+  color: var(--c-white);
 }
 .sub {
-  color: #9eb1c7;
-  font-size: 12px;
+  color: var(--c-gray);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
 }
 .chart {
   height: 300px;

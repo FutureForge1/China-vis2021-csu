@@ -1,74 +1,74 @@
 <template>
   <div class="city-calendar-wrap">
     <div class="section-heading">
-      <div class="section-badge">城市污染日历</div>
-      <div class="section-meta">全年每日 AQI 热力图</div>
+      <div class="section-badge">CITY CALENDAR</div>
+      <div class="section-meta">YEARLY AQI HEATMAP</div>
     </div>
 
-    <!-- 选择器区域 -->
+    <!-- Selectors -->
     <div class="selectors">
       <div class="selector-group">
-        <label>年份：</label>
+        <label>YEAR:</label>
         <select v-model="selectedYear" @change="onYearChange">
-          <option v-for="y in availableYears" :key="y" :value="y">{{ y }}年</option>
+          <option v-for="y in availableYears" :key="y" :value="y">{{ y }}</option>
         </select>
       </div>
       
       <div class="selector-group">
-        <label>省份：</label>
+        <label>PROVINCE:</label>
         <select v-model="selectedProvince" @change="onProvinceChange">
-          <option value="">请选择省份</option>
+          <option value="">SELECT PROVINCE</option>
           <option v-for="p in provinces" :key="p" :value="p">{{ p }}</option>
         </select>
       </div>
       
       <div class="selector-group">
-        <label>城市：</label>
+        <label>CITY:</label>
         <select v-model="selectedCity" @change="onCityChange" :disabled="!selectedProvince">
-          <option value="">请选择城市</option>
+          <option value="">SELECT CITY</option>
           <option v-for="c in cities" :key="c" :value="c">{{ c }}</option>
         </select>
       </div>
     </div>
 
-    <!-- 加载状态 -->
+    <!-- Loading -->
     <div v-if="loading" class="loading">
       <span class="spinner"></span>
-      <span>正在加载数据...</span>
+      <span>LOADING DATA...</span>
     </div>
 
-    <!-- 日历图表 -->
+    <!-- Chart -->
     <div v-else-if="calendarData.length > 0" class="chart-container">
       <VChart :option="chartOption" autoresize class="calendar-chart" />
     </div>
 
-    <!-- 空状态 -->
+    <!-- Empty State -->
     <div v-else class="empty-state">
-      <p>请选择年份、省份和城市查看污染日历</p>
+      <p>SELECT YEAR, PROVINCE AND CITY TO VIEW CALENDAR</p>
     </div>
 
-    <!-- 图例 -->
+    <!-- Legend -->
     <div class="legend">
-      <span class="legend-title">AQI等级：</span>
-      <span class="legend-item" style="--color: #22c55e">■ 优(0-50)</span>
-      <span class="legend-item" style="--color: #a3e635">■ 良(51-100)</span>
-      <span class="legend-item" style="--color: #facc15">■ 轻度(101-150)</span>
-      <span class="legend-item" style="--color: #f97316">■ 中度(151-200)</span>
-      <span class="legend-item" style="--color: #ef4444">■ 重度(201-300)</span>
-      <span class="legend-item" style="--color: #7f1d1d">■ 严重(>300)</span>
+      <span class="legend-title">AQI LEVEL:</span>
+      <span class="legend-item" style="--color: #22c55e">■ EXCELLENT</span>
+      <span class="legend-item" style="--color: #a3e635">■ GOOD</span>
+      <span class="legend-item" style="--color: #facc15">■ LIGHT</span>
+      <span class="legend-item" style="--color: #f97316">■ MODERATE</span>
+      <span class="legend-item" style="--color: #ef4444">■ HEAVY</span>
+      <span class="legend-item" style="--color: #7f1d1d">■ SEVERE</span>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from "vue";
+import { computed, onMounted, ref } from "vue";
 import {
-  loadAvailableYears,
-  getCitiesByProvince,
-  computeCityYearCalendar,
+    computeCityYearCalendar,
+    getCitiesByProvince,
+    loadAvailableYears,
 } from "../utils/dataLoader";
 
-// 响应式状态
+// State
 const availableYears = ref([]);
 const provinceCityMap = ref({});
 const selectedYear = ref("");
@@ -77,47 +77,48 @@ const selectedCity = ref("");
 const calendarData = ref([]);
 const loading = ref(false);
 
-// 计算属性
+// Computed
 const provinces = computed(() => Object.keys(provinceCityMap.value).sort());
 const cities = computed(() => {
   if (!selectedProvince.value) return [];
   return provinceCityMap.value[selectedProvince.value] || [];
 });
 
-// 图表配置
+// Chart Option
 const chartOption = computed(() => {
   if (!calendarData.value.length || !selectedYear.value) return {};
 
   const year = selectedYear.value;
-  
-  // 转换数据为 ECharts 日历格式: [日期, AQI值]
   const heatmapData = calendarData.value.map((d) => [d.date, d.aqi]);
 
   return {
     backgroundColor: "transparent",
     tooltip: {
+      backgroundColor: "rgba(20, 20, 20, 0.9)",
+      borderColor: "rgba(255, 255, 255, 0.15)",
+      textStyle: { color: "#0a0a0a", fontFamily: 'JetBrains Mono' },
       formatter: (params) => {
         const date = params.data[0];
         const dayData = calendarData.value.find((d) => d.date === date);
         if (!dayData) return "";
 
         const dateObj = new Date(date);
-        const dateStr = `${dateObj.getFullYear()}年${dateObj.getMonth() + 1}月${dateObj.getDate()}日`;
+        const dateStr = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
 
         return `
-          <div style="font-weight: bold; margin-bottom: 8px;">${dateStr}</div>
+          <div style="font-weight: bold; margin-bottom: 8px; font-family: 'Oswald'">${dateStr}</div>
           <div style="color: ${dayData.color}; font-size: 16px; margin-bottom: 8px;">
             AQI: ${dayData.aqi} (${dayData.level})
           </div>
-          <div style="font-size: 12px; color: #999; margin-bottom: 4px;">首要污染物: ${dayData.primaryPollutant}</div>
+          <div style="font-size: 12px; color: #666; margin-bottom: 4px;">PRIMARY: ${dayData.primaryPollutant}</div>
           <hr style="border: none; border-top: 1px solid #444; margin: 8px 0;">
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 12px;">
-            <span>PM2.5: ${dayData.pm25} µg/m³</span>
-            <span>PM10: ${dayData.pm10} µg/m³</span>
-            <span>SO₂: ${dayData.so2} µg/m³</span>
-            <span>NO₂: ${dayData.no2} µg/m³</span>
-            <span>CO: ${dayData.co} mg/m³</span>
-            <span>O₃: ${dayData.o3} µg/m³</span>
+            <span>PM2.5: ${dayData.pm25}</span>
+            <span>PM10: ${dayData.pm10}</span>
+            <span>SO₂: ${dayData.so2}</span>
+            <span>NO₂: ${dayData.no2}</span>
+            <span>CO: ${dayData.co}</span>
+            <span>O₃: ${dayData.o3}</span>
           </div>
         `;
       },
@@ -128,31 +129,33 @@ const chartOption = computed(() => {
       calculable: true,
       orient: "horizontal",
       left: "center",
-      bottom: 10,
+      bottom: 0,
       inRange: {
         color: ["#22c55e", "#a3e635", "#facc15", "#f97316", "#ef4444", "#7f1d1d"],
       },
-      textStyle: { color: "#374151" },
+      textStyle: { color: "#666", fontFamily: 'JetBrains Mono' },
     },
     calendar: {
-      top: 60,
-      left: 40,
-      right: 40,
+      top: 40,
+      left: 30,
+      right: 30,
       cellSize: ["auto", 16],
       range: year,
       itemStyle: {
         borderWidth: 1,
-        borderColor: "#e5e7eb",
+        borderColor: "#1a1a1a",
+        color: "transparent"
       },
       splitLine: {
-        lineStyle: { color: "#d1d5db", width: 2 },
+        lineStyle: { color: "#ddd", width: 1 },
       },
-      yearLabel: { show: true, color: "#374151" },
-      monthLabel: { color: "#6b7280", nameMap: "cn" },
+      yearLabel: { show: true, color: "#0a0a0a", fontFamily: 'Oswald' },
+      monthLabel: { color: "#666", fontFamily: 'JetBrains Mono', nameMap: 'en' },
       dayLabel: { 
-        color: "#6b7280", 
+        color: "#666", 
         firstDay: 1,
-        nameMap: ["日", "一", "二", "三", "四", "五", "六"]
+        fontFamily: 'JetBrains Mono',
+        nameMap: 'en'
       },
     },
     series: [
@@ -165,7 +168,7 @@ const chartOption = computed(() => {
   };
 });
 
-// 事件处理
+// Handlers
 async function onYearChange() {
   selectedProvince.value = "";
   selectedCity.value = "";
@@ -176,7 +179,7 @@ async function onYearChange() {
     try {
       provinceCityMap.value = await getCitiesByProvince(selectedYear.value);
     } catch (e) {
-      console.error("加载省份城市列表失败:", e);
+      console.error("Failed to load cities:", e);
     }
     loading.value = false;
   }
@@ -197,13 +200,13 @@ async function onCityChange() {
       selectedCity.value
     );
   } catch (e) {
-    console.error("加载日历数据失败:", e);
+    console.error("Failed to load calendar data:", e);
     calendarData.value = [];
   }
   loading.value = false;
 }
 
-// 初始化
+// Init
 onMounted(async () => {
   try {
     availableYears.value = await loadAvailableYears();
@@ -212,83 +215,75 @@ onMounted(async () => {
       await onYearChange();
     }
   } catch (e) {
-    console.error("初始化失败:", e);
+    console.error("Init failed:", e);
   }
 });
 </script>
 
 <style scoped>
 .city-calendar-wrap {
-  background: #f8fafc;
-  border-radius: 12px;
-  padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  border: 1px solid #e2e8f0;
+  gap: 15px;
 }
 
 .section-heading {
   display: flex;
   align-items: center;
   gap: 12px;
+  border-bottom: 1px solid var(--c-border);
+  padding-bottom: 10px;
 }
 
 .section-badge {
-  background: linear-gradient(135deg, #238636, #2ea043);
-  color: #fff;
+  background: var(--c-yellow);
+  color: var(--c-black);
   padding: 4px 12px;
-  border-radius: 16px;
-  font-weight: 600;
+  font-weight: 700;
   font-size: 14px;
+  font-family: var(--font-display);
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
 }
 
 .section-meta {
-  color: #6b7280;
-  font-size: 13px;
+  color: var(--c-gray);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
 }
 
 .selectors {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
-  padding: 12px;
-  background: #ffffff;
-  border-radius: 8px;
-  border: 1px solid #e5e7eb;
+  gap: 20px;
 }
 
 .selector-group {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .selector-group label {
-  color: #374151;
-  font-size: 13px;
-  white-space: nowrap;
+  color: var(--c-gray);
+  font-size: 12px;
+  font-family: var(--font-mono);
 }
 
 .selector-group select {
-  background: #ffffff;
-  color: #1f2937;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  padding: 6px 12px;
-  font-size: 13px;
-  min-width: 140px;
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--c-white);
+  border: 1px solid var(--c-border);
+  padding: 4px 8px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  min-width: 120px;
   cursor: pointer;
 }
 
 .selector-group select:focus {
   outline: none;
-  border-color: #388bfd;
-}
-
-.selector-group select:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+  border-color: var(--c-yellow);
 }
 
 .loading {
@@ -296,15 +291,16 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   gap: 12px;
-  padding: 60px;
-  color: #6b7280;
+  padding: 40px;
+  color: var(--c-gray);
+  font-family: var(--font-mono);
 }
 
 .spinner {
   width: 20px;
   height: 20px;
-  border: 2px solid #e5e7eb;
-  border-top-color: #2f7e57;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-top-color: var(--c-yellow);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -316,10 +312,9 @@ onMounted(async () => {
 }
 
 .chart-container {
-  background: #ffffff;
-  border-radius: 8px;
-  padding: 12px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--c-border);
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.2);
 }
 
 .calendar-chart {
@@ -331,29 +326,28 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 60px;
-  color: #9ca3af;
-  font-size: 14px;
+  padding: 40px;
+  color: var(--c-gray);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  border: 1px dashed var(--c-border);
 }
 
 .legend {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
-  padding: 8px 12px;
-  background: #ffffff;
-  border-radius: 8px;
-  font-size: 12px;
-  border: 1px solid #e5e7eb;
+  gap: 15px;
+  font-size: 10px;
+  font-family: var(--font-mono);
 }
 
 .legend-title {
-  color: #374151;
-  font-weight: 500;
+  color: var(--c-gray);
+  font-weight: bold;
 }
 
 .legend-item {
-  color: var(--color);
+  color: var(--c-white);
 }
 </style>

@@ -23,7 +23,9 @@ const option = computed(() => {
   const axis = dimensions.map((d, idx) => ({
     dim: idx,
     name: d,
-    nameTextStyle: { color: "#cdd9e5" },
+    nameTextStyle: { color: "#666", fontFamily: 'JetBrains Mono' },
+    axisLine: { lineStyle: { color: "rgba(0,0,0,0.1)" } },
+    axisLabel: { color: "#666", fontFamily: 'JetBrains Mono' },
   }));
 
   const data = props.rows.map((r) => ({
@@ -43,13 +45,16 @@ const option = computed(() => {
     },
     tooltip: {
       trigger: "item",
+      backgroundColor: "rgba(20, 20, 20, 0.9)",
+      borderColor: "rgba(255, 255, 255, 0.15)",
+      textStyle: { color: "#0a0a0a", fontFamily: 'JetBrains Mono' },
       formatter: (p) => {
         const d = data[p.dataIndex];
-        const lines = [d.name];
+        const lines = [`<div style="font-family: 'Oswald'; font-weight: bold">${d.name}</div>`];
         dimensions.forEach((dim, i) => {
           lines.push(`${dim}: ${d.value[i]}`);
         });
-        lines.push(`主导: ${d.primary}`);
+        lines.push(`PRIMARY: ${d.primary}`);
         return lines.join("<br/>");
       },
     },
@@ -61,8 +66,8 @@ const option = computed(() => {
       inRange: {
         color: ["#22c55e", "#a3e635", "#facc15", "#f97316", "#ef4444", "#7f1d1d"],
       },
-      text: ["高AQI", "低AQI"],
-      textStyle: { color: "#cdd9e5" },
+      text: ["HIGH", "LOW"],
+      textStyle: { color: "#666", fontFamily: 'JetBrains Mono' },
     },
     series: [
       {
@@ -84,16 +89,26 @@ function handleClick(p) {
 .wrap {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
 }
 .heading {
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  gap: 10px;
+  border-bottom: 1px solid var(--c-border);
+  padding-bottom: 5px;
+}
+h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 16px;
+  color: var(--c-white);
 }
 .sub {
-  color: #9eb1c7;
-  font-size: 12px;
+  color: var(--c-gray);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
 }
 .chart {
   height: 320px;

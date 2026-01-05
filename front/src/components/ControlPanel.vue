@@ -1,20 +1,19 @@
 <template>
   <div class="panel">
     <div class="panel-head">
-  <div class="date">{{ date || "加载中" }}</div>
-
-  <div class="location-group">
-    <div class="location">{{ region || "全国均值" }}</div>
-    <button 
-      v-if="showReset" 
-      class="reset-btn" 
-      @click="$emit('reset-region')"
-      title="还原为默认值"
-    >
-      重置
-    </button>
-  </div>
-  </div>
+      <div class="date">{{ date || "LOADING" }}</div>
+      <div class="location-group">
+        <div class="location">{{ region || "NATIONAL MEAN" }}</div>
+        <button 
+          v-if="showReset" 
+          class="reset-btn" 
+          @click="$emit('reset-region')"
+          title="RESET TO DEFAULT"
+        >
+          RESET
+        </button>
+      </div>
+    </div>
     <div class="main-row">
       <div class="aqi-block">
         <div class="label">AQI</div>
@@ -50,7 +49,6 @@
         </div>
       </div>
     </div>
-
   </div>
 </template>
 
@@ -88,8 +86,8 @@ const weatherList = computed(() => [
 
 // 【新增】判断是否显示重置按钮
 const showReset = computed(() => {
-  // 当 region 存在且不等于默认值时显示
-  return props.region && props.region !== '全国' && props.region !== '全国均值';
+  // Show reset if region is not default
+  return props.region && props.region !== 'NATIONWIDE' && props.region !== 'NATIONAL MEAN';
 });
 
 function aggregateStats(rows) {
@@ -106,13 +104,17 @@ function aggregateStats(rows) {
       aqiSum += aqi;
       aqiCount += 1;
     }
-    const u = Number(row?.u);
-    const v = Number(row?.v);
+    
+    // 兼容月度数据字段 (u_mean, v_mean)
+    const u = Number(row?.u ?? row?.u_mean);
+    const v = Number(row?.v ?? row?.v_mean);
     const wind = Number.isFinite(u) && Number.isFinite(v) ? Math.sqrt(u * u + v * v) : null;
     if (Number.isFinite(wind)) sums.wind += wind;
+    
     for (const k of keys) {
       if (k === "wind") continue;
-      const val = Number(row?.[k]);
+      // 兼容月度数据字段 (例如 pm25_mean)
+      const val = Number(row?.[k] ?? row?.[`${k}_mean`]);
       if (Number.isFinite(val)) {
         sums[k] += val;
       }
@@ -127,23 +129,23 @@ function aggregateStats(rows) {
 }
 
 function gaugeWidth(v) {
-  if (!Number.isFinite(v)) return "0%";
-  const max = 300;
-  return `${Math.min((v / max) * 100, 100)}%`;
+  if (v == null) return "0%";
+  const val = Number(v);
+  const max = 200; 
+  return Math.min(100, (val / max) * 100) + "%";
 }
 
 function gaugeColor(v) {
-  if (!Number.isFinite(v)) return "#e5e7eb";
-  if (v <= 50) return "#22c55e";
-  if (v <= 100) return "#a3e635";
-  if (v <= 150) return "#facc15";
-  if (v <= 200) return "#f97316";
-  if (v <= 300) return "#ef4444";
-  return "#7f1d1d";
+  if (v == null) return "#ddd333";
+  const val = Number(v);
+  if (val < 50) return "#00E676"; // Good
+  if (val < 100) return "#FFE600"; // Moderate (Endfield Yellow)
+  if (val < 150) return "#FF9100"; // Unhealthy
+  return "#FF1744"; // Hazardous
 }
 
 function formatVal(v) {
-  return Number.isFinite(v) ? v : "-";
+  return v == null ? "-" : v;
 }
 </script>
 
@@ -151,154 +153,148 @@ function formatVal(v) {
 .panel {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  background: var(--card);
-  border: 1px solid var(--card-border);
-  border-radius: 14px;
-  padding: 12px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 10px 24px rgba(79, 114, 143, 0.12);
+  gap: 20px;
 }
 
 .panel-head {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: flex-end;
+  border-bottom: 1px solid var(--c-border);
+  padding-bottom: 10px;
 }
 
 .date {
-  font-weight: 700;
-  font-size: 16px;
+  font-family: var(--font-display);
+  font-size: 24px;
+  color: var(--c-white);
+}
+
+.location-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .location {
-  color: var(--muted);
+  font-family: var(--font-mono);
   font-size: 14px;
+  color: var(--c-yellow);
+}
+
+.reset-btn {
+  background: transparent;
+  border: 1px solid var(--c-yellow);
+  color: var(--c-yellow);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 6px;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+
+.reset-btn:hover {
+  background: var(--c-yellow);
+  color: var(--c-black);
+}
+
+.main-row {
+  display: flex;
+  gap: 20px;
 }
 
 .aqi-block {
-  background: linear-gradient(135deg, rgba(47, 126, 87, 0.12), rgba(139, 191, 95, 0.12));
-  border: 1px solid rgba(47, 126, 87, 0.24);
-  border-radius: 12px;
+  background: var(--c-yellow);
+  color: var(--c-black);
   padding: 10px;
+  min-width: 80px;
+  text-align: center;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
 }
 
 .aqi-block .label {
   font-size: 12px;
-  color: var(--muted);
+  font-weight: 700;
 }
 
 .aqi-block .aqi-value {
-  font-size: 22px;
-  font-weight: 800;
-}
-
-.main-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .weather {
+  flex: 1;
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 6px;
+  gap: 10px;
 }
 
 .weather-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px;
-  border-radius: 10px;
-  background: rgba(0, 0, 0, 0.02);
-  border: 1px solid rgba(0, 0, 0, 0.04);
-  font-size: 12px;
+  gap: 10px;
+  border-bottom: 1px solid var(--c-border);
+  padding-bottom: 5px;
 }
 
 .weather-item .icon {
+  font-family: var(--font-mono);
+  color: var(--c-gray);
+  font-size: 12px;
+}
+
+.weather-item .val {
+  font-family: var(--font-mono);
+  color: var(--c-white);
   font-size: 14px;
 }
 
 .gauge-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
 }
 
 .gauge-card {
+  border: 1px solid var(--c-border);
   padding: 10px;
-  border-radius: 12px;
-  border: 1px solid rgba(0, 0, 0, 0.04);
-  background: rgba(0, 0, 0, 0.01);
   cursor: pointer;
-  transition: transform 0.15s ease, border-color 0.15s ease;
+  transition: all 0.2s;
 }
 
 .gauge-card:hover {
-  transform: translateY(-2px);
-  border-color: rgba(47, 126, 87, 0.25);
+  border-color: var(--c-white);
 }
 
 .gauge-card.active {
-  border-color: rgba(47, 126, 87, 0.45);
-  box-shadow: 0 6px 16px rgba(47, 126, 87, 0.15);
-}
-
-.gauge-track {
-  width: 100%;
-  height: 8px;
-  border-radius: 999px;
-  background: #e5e7eb;
-  overflow: hidden;
-}
-
-.gauge-fill {
-  height: 100%;
-  border-radius: 999px;
-  transition: width 0.3s ease, background 0.3s ease;
+  border-color: var(--c-yellow);
+  background: rgba(255, 230, 0, 0.05);
 }
 
 .gauge-label {
   display: flex;
   justify-content: space-between;
-  margin-top: 4px;
+  margin-bottom: 5px;
+  font-family: var(--font-mono);
   font-size: 12px;
 }
 
-.reset-btn {
-  font-size: 11px;
-  padding: 2px 8px;
-  border: 1px solid rgba(47, 126, 87, 0.3);
-  color: #2f7e57;
-  background: rgba(47, 126, 87, 0.05);
-  border-radius: 99px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-.reset-btn:hover {
-  background: rgba(47, 126, 87, 0.15);
-  border-color: #2f7e57;
+.gauge-label .name {
+  color: var(--c-gray);
 }
 
-.actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
+.gauge-label .val {
+  color: var(--c-white);
 }
 
-.actions button {
-  border: 1px solid rgba(47, 126, 87, 0.2);
-  background: rgba(47, 126, 87, 0.08);
-  color: #1f2937;
-  padding: 6px 12px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s ease;
+.gauge-track {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
 }
 
-.actions button.active {
-  background: linear-gradient(120deg, #2f7e57, #8bbf5f);
-  color: #0f172a;
-  box-shadow: 0 8px 16px rgba(47, 126, 87, 0.2);
+.gauge-fill {
+  height: 100%;
 }
 </style>

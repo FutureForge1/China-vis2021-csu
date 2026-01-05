@@ -2,10 +2,10 @@
   <div class="wrap">
     <div class="heading">
       <div>
-        <h3>污染物线圈图</h3>
-        <span class="sub">条数映射值 · 颜色映射当月 AQI 等级</span>
+        <h3>POLLUTANT RINGS</h3>
+        <span class="sub">SEGMENTS: VALUE · COLOR: AQI</span>
       </div>
-      <div class="note">顺序与 AQI 排行一致</div>
+      <div class="note">ORDERED BY AQI RANK</div>
     </div>
     <div class="grid" v-if="items && items.length">
       <div class="cell header empty"></div>
@@ -14,16 +14,16 @@
         :key="m"
         class="cell header month"
       >
-        {{ m }}月
+        {{ m }}
       </div>
-      <template v-for="row in items" :key="row.name">
+      <div v-for="row in items" :key="row.name" class="grid-row">
         <div class="cell row-label">{{ row.name }}</div>
         <div
           v-for="cell in row.months"
-          :key="cell.month + row.name"
+          :key="'cell-' + row.name + '-' + cell.month"
           class="cell ring-cell"
           :style="cellStyle(cell)"
-          :title="`${row.name} ${cell.month}月\n${metricLabel.toUpperCase()}: ${cell.value}\nAQI: ${cell.aqi.toFixed(1)}`"
+          :title="`${row.name} ${cell.month}\n${metricLabel.toUpperCase()}: ${cell.value}\nAQI: ${cell.aqi.toFixed(1)}`"
         >
           <svg viewBox="0 0 100 100" aria-hidden="true">
             <g :stroke="aqiColor(cell.aqi)" stroke-width="2" stroke-linecap="round">
@@ -40,9 +40,9 @@
             <circle cx="50" cy="50" r="8" :fill="aqiColor(cell.aqi)" fill-opacity="0.8" />
           </svg>
         </div>
-      </template>
+      </div>
     </div>
-    <div v-else class="placeholder">暂无数据</div>
+    <div v-else class="placeholder">NO DATA AVAILABLE</div>
   </div>
 </template>
 
@@ -60,7 +60,7 @@ const metricLabel = computed(() => props.metric || "pm25");
 const cellStyle = (cell) => {
   const color = aqiColor(cell.aqi);
   return {
-    background: `radial-gradient(circle at 50% 50%, ${color}18, rgba(255,255,255,0.85))`,
+    background: `radial-gradient(circle at 50% 50%, ${color}18, rgba(255,255,255,0.03))`,
     borderColor: `${color}55`,
   };
 };
@@ -79,26 +79,35 @@ function aqiColor(v) {
 .wrap {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 .heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 10px;
+  border-bottom: 1px solid var(--c-border);
+  padding-bottom: 5px;
+}
+h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 16px;
+  color: var(--c-white);
 }
 .sub {
-  color: #9eb1c7;
-  font-size: 12px;
+  color: var(--c-gray);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
 }
 .note {
-  font-size: 12px;
-  color: #475569;
-  background: rgba(15, 23, 42, 0.05);
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  padding: 4px 10px;
-  border-radius: 10px;
+  font-size: 10px;
+  color: var(--c-black);
+  background: var(--c-yellow);
+  padding: 2px 6px;
+  font-family: var(--font-mono);
+  font-weight: bold;
 }
 .grid {
   display: grid;
@@ -106,28 +115,31 @@ function aqiColor(v) {
   gap: 6px;
   align-items: center;
 }
+.grid-row {
+  display: contents;
+}
 .cell {
   min-height: 64px;
-  border: 1px solid rgba(15, 23, 42, 0.06);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid var(--c-border);
+  background: rgba(0, 0, 0, 0.2);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 .cell.header {
-  height: 32px;
+  min-height: 32px;
   font-size: 12px;
-  color: #475569;
-  background: rgba(15, 23, 42, 0.03);
+  color: var(--c-gray);
+  background: var(--c-card);
+  font-family: var(--font-mono);
 }
 .cell.row-label {
   font-weight: 600;
   font-size: 13px;
-  color: #111827;
+  color: var(--c-white);
   justify-content: flex-start;
   padding-left: 8px;
+  font-family: var(--font-display);
 }
 .cell.ring-cell {
   height: 64px;
@@ -139,10 +151,10 @@ function aqiColor(v) {
 }
 .placeholder {
   padding: 16px;
-  color: #6b7280;
+  color: var(--c-gray);
   text-align: center;
-  border: 1px dashed rgba(15, 23, 42, 0.1);
-  border-radius: 10px;
+  border: 1px dashed var(--c-border);
+  font-family: var(--font-mono);
 }
 @media (max-width: 1100px) {
   .grid {
