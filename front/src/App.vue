@@ -466,6 +466,58 @@
           </div>
         </section>
 
+        <section class="layout secondary">
+          <!-- 左侧面板：降维图 -->
+          <div class="pane">
+            <h3>省份污染特征降维分析</h3>
+            <!-- 文档2中应该这样使用 -->
+                        <!-- 在月度分析部分，修改ProvinceDimensionChart的调用 -->
+            <ProvinceDimensionChart
+              :data="monthlyData"
+              :metric="monthlyMetric"
+              :selected-province="selectedRegion"
+              :selected-year="selectedYear"
+              :selected-month="selectedMonth"
+              @province-select="handleMapSelect"
+              v-if="monthlyData.length > 0"
+            />
+          </div>
+
+          <!-- 右侧面板：聚类分析说明 -->
+          <div class="pane">
+            <h3>聚类分析说明</h3>
+            <div class="cluster-info">
+              <div v-if="selectedRegion" class="cluster-details">
+                <h4>当前选中：{{ selectedRegion }}</h4>
+                <div class="cluster-stats">
+                  <div class="stat">
+                    <span class="label">污染特征：</span>
+                    <span class="value">{{ selectedClusterInfo.clusterType || '低污染区域' }}</span>
+                  </div>
+                  <div class="stat">
+                    <span class="label">主要污染物：</span>
+                    <span class="value">{{ selectedClusterInfo.primaryPollutant || 'PM2.5' }}</span>
+                  </div>
+                  <div class="stat">
+                    <span class="label">相似省份：</span>
+                    <div class="similar-provinces">
+                      <span v-for="province in (selectedClusterInfo.similarProvinces || ['台湾省', '青海省', '内蒙古自治区'])"
+                            :key="province"
+                            class="province-tag">
+                        {{ province }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div v-else class="no-selection">
+                <p>点击地图或降维图中的点查看详细信息</p>
+                <p class="hint">降维图展示了各省份在污染特征空间中的相对位置，距离越近的省份污染特征越相似</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
 <!--        <section class="layout secondary">-->
 <!--          <div class="pane">-->
 <!--            <h3>城市详细分析</h3>-->
@@ -520,6 +572,8 @@ import CityStackedPie from "./components/CityStackedPie.vue";
 import CityTypeRibbon from "./components/CityTypeRibbon.vue";
 import MonthView from "./components/MonthView.vue";
 import CityPollutionCalendar from "./components/CityPollutionCalendar.vue";
+import ProvinceDimensionChart from "./components/ProvinceDimensionChart.vue";
+import MonthlyRadar from "./components/MonthlyRadar.vue";
 import {
   classifyLevels,
   computeRadialVector,
@@ -943,6 +997,11 @@ function handleRankingSelect(name) {
 
 function handleMapSelect(name) {
   selectedRegion.value = name;
+
+  // 添加聚类信息更新
+  if (route.name === "monthly" && isMonthly.value) {
+    updateClusterInfo(name);
+  }
 }
 
 function handleParallelSelect(name) {
@@ -1332,6 +1391,174 @@ const fixedRangeMapData = computed(() => {
     ...item,
     value: Number(item[monthlyMetric.value] || item[`${monthlyMetric.value}_mean`] || 0)
   }));
+});
+
+
+// 降维分析相关状态
+const selectedClusterInfo = ref(null);
+
+// // 处理省份选择
+// const handleMapSelect = (provinceName) => {
+//   console.log("选中省份:", provinceName);
+//   selectedRegion.value = provinceName;
+//   updateClusterInfo(provinceName);
+// };
+
+// 修改updateClusterInfo函数，使用新的相似度计算
+const updateClusterInfo = (provinceName) => {
+  if (!provinceName || !monthlyData.value.length) {
+    selectedClusterInfo.value = null;
+    return;
+  }
+
+  // 找到该省份的所有城市数据
+  const provinceCities = monthlyData.value.filter(item =>
+    item.province === provinceName
+  );
+
+  if (provinceCities.length === 0) {
+    selectedClusterInfo.value = null;
+    return;
+  }
+
+  // 计算省份平均污染物浓度
+  const pollutants = ['pm25', 'pm10', 'so2', 'no2', 'co', 'o3'];
+  const provinceAverages = {};
+
+  pollutants.forEach(pollutant => {
+    const values = provinceCities
+      .map(city => city[pollutant] || city[`${pollutant}_mean`] || 0)
+      .filter(val => !isNaN(val) && val > 0);
+
+    provinceAverages[pollutant] = values.length > 0
+      ? values.reduce((a, b) => a + b) / values.length
+      : 0;
+  });
+
+  // 使用相对超标倍数判断主要污染物
+  const pollutantStandards = {
+    pm25: 35,   // 24小时平均标准(μg/m³)
+    pm10: 50,
+    so2: 150,
+    no2: 100,
+    co: 4,      // mg/m³
+    o3: 160
+  };
+
+  const pollutantScores = pollutants.map(pollutant => ({
+    name: pollutant,
+    score: provinceAverages[pollutant] / pollutantStandards[pollutant],
+    value: provinceAverages[pollutant]
+  }));
+
+  // 按超标倍数排序，取最严重的为主要污染物
+  const primaryPollutant = pollutantScores
+    .sort((a, b) => b.score - a.score)[0]?.name || 'pm25';
+
+  // 判断污染程度
+  const totalScore = pollutantScores.reduce((sum, p) => sum + p.score, 0);
+  let clusterType = "低污染区域";
+  if (totalScore > 4) clusterType = "高污染区域";
+  else if (totalScore > 2) clusterType = "中等污染区域";
+
+  // 使用修复后的相似省份计算
+  const similarProvinces = calculateSimilarProvinces(provinceName, monthlyData.value);
+
+  selectedClusterInfo.value = {
+    province: provinceName,
+    clusterType,
+    primaryPollutant: primaryPollutant.toUpperCase(),
+    similarProvinces: similarProvinces.length > 0 ? similarProvinces : ['暂无相似省份数据'],
+    pollutantLevels: pollutantScores
+  };
+};
+
+// 修改calculateSimilarProvinces函数
+const calculateSimilarProvinces = (targetProvince, data, topN = 3) => {
+  if (!targetProvince || !data.length) return [];
+
+  // 先按省份聚合数据，避免重复
+  const provinceMap = new Map();
+
+  data.forEach(item => {
+    const province = item.province;
+    if (!province) return;
+
+    if (!provinceMap.has(province)) {
+      provinceMap.set(province, []);
+    }
+    provinceMap.get(province).push(item);
+  });
+
+  // 计算每个省份的平均值
+  const provinceAverages = new Map();
+  provinceMap.forEach((cities, province) => {
+    const pollutants = ['pm25', 'pm10', 'so2', 'no2', 'co', 'o3'];
+    const averages = {};
+
+    pollutants.forEach(pollutant => {
+      const values = cities
+        .map(city => city[pollutant] || city[`${pollutant}_mean`] || 0)
+        .filter(val => !isNaN(val) && val > 0);
+
+      averages[pollutant] = values.length > 0
+        ? values.reduce((a, b) => a + b) / values.length
+        : 0;
+    });
+
+    provinceAverages.set(province, averages);
+  });
+
+  const targetAverages = provinceAverages.get(targetProvince);
+  if (!targetAverages) return [];
+
+  // 标准化污染物数值（使用对数变换减少量级差异）
+  const normalizeValue = (value, pollutant) => {
+    if (value <= 0) return 0;
+    // 不同污染物的基准值，用于标准化
+    const baselines = {
+      pm25: 75, pm10: 150, so2: 150, no2: 100, co: 4, o3: 160
+    };
+    return Math.log1p(value / baselines[pollutant]);
+  };
+
+  const differences = Array.from(provinceAverages.entries())
+    .filter(([province]) => province !== targetProvince)
+    .map(([province, averages]) => {
+      // 计算多维度欧氏距离（使用标准化值）
+      const distance = Math.sqrt(
+        Object.keys(targetAverages).reduce((sum, pollutant) => {
+          const targetNorm = normalizeValue(targetAverages[pollutant], pollutant);
+          const provinceNorm = normalizeValue(averages[pollutant], pollutant);
+          const diff = targetNorm - provinceNorm;
+          return sum + diff * diff;
+        }, 0)
+      );
+
+      return {
+        province,
+        distance,
+        similarity: 1 / (1 + distance)
+      };
+    })
+    .sort((a, b) => a.distance - b.distance)
+    .slice(0, topN);
+
+  return differences.map(item => item.province);
+};
+
+// 监听选中区域变化
+watch(() => selectedRegion.value, (newRegion) => {
+  if (newRegion) {
+    updateClusterInfo(newRegion);
+  }
+});
+
+// 监听月度数据变化
+watch(() => monthlyData.value, (newData) => {
+  if (newData && newData.length > 0 && selectedRegion.value) {
+    updateClusterInfo(selectedRegion.value);
+  }
 });
 
 </script>
@@ -1869,5 +2096,97 @@ h1 {
   margin: 15px 0;
 }
 
+
+/* 聚类信息样式 */
+.cluster-info {
+  padding: 15px;
+  background: #fff;
+  border-radius: 8px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.cluster-details h4 {
+  margin: 0 0 15px 0;
+  color: #2f7e57;
+  font-size: 16px;
+  font-weight: 600;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #eee;
+}
+
+.cluster-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.stat {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid #f5f5f5;
+}
+
+.stat:last-child {
+  border-bottom: none;
+}
+
+.stat .label {
+  font-weight: 600;
+  color: #666;
+  min-width: 80px;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.stat .value {
+  color: #333;
+  font-size: 13px;
+  flex-grow: 1;
+}
+
+.similar-provinces {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 5px;
+}
+
+.province-tag {
+  background: #e3f2fd;
+  color: #1976d2;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  border: 1px solid #bbdefb;
+  white-space: nowrap;
+}
+
+.no-selection {
+  text-align: center;
+  color: #666;
+  padding: 40px 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+}
+
+.no-selection p {
+  margin: 5px 0;
+}
+
+.hint {
+  font-size: 12px;
+  margin-top: 15px;
+  line-height: 1.5;
+  color: #999;
+  max-width: 300px;
+}
 
 </style>
