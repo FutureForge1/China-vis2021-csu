@@ -1,8 +1,8 @@
 <template>
   <div class="field">
-    <label>年份</label>
+    <label>YEAR</label>
     <select :value="currentYear" @change="$emit('update:year', $event.target.value)">
-      <option v-for="y in availableYears" :key="y" :value="y">{{ y }}年</option>
+      <option v-for="y in availableYears" :key="y" :value="y">{{ y }}</option>
     </select>
   </div>
 </template>
@@ -24,32 +24,31 @@ defineEmits(["update:year"]);
 }
 
 label {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--muted);
+  font-size: 10px;
+  font-weight: bold;
+  color: var(--c-gray);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  font-family: var(--font-mono);
 }
 
 select {
-  padding: 8px 12px;
-  border: 1px solid rgba(18, 24, 40, 0.12);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.8);
-  color: #0f172a;
-  font-size: 14px;
+  padding: 4px 8px;
+  border: 1px solid var(--c-border);
+  border-radius: 0;
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--c-white);
+  font-size: 12px;
+  font-family: var(--font-mono);
   min-width: 80px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  outline: none;
 }
 
 select:focus {
-  outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(47, 126, 87, 0.1);
+  border-color: var(--c-yellow);
 }
 
 select:hover {
-  border-color: rgba(47, 126, 87, 0.3);
+  border-color: var(--c-white);
 }
 </style>

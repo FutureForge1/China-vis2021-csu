@@ -16,17 +16,26 @@
     <div class="region-info-panel" v-if="selectedRegion">
       <h3>{{ selectedRegion.name }}</h3>
       <div class="region-details">
-        <p><strong>行政区划代码:</strong> {{ selectedRegion.code }}</p>
-        <p><strong>经纬度:</strong> {{ selectedRegion.longitude }}, {{ selectedRegion.latitude }}</p>
-        <p><strong>邮政编码:</strong> {{ selectedRegion.zipCode }}</p>
+        <div class="info-row">
+          <span class="label">CODE</span>
+          <span class="val">{{ selectedRegion.code }}</span>
+        </div>
+        <div class="info-row">
+          <span class="label">COORDINATES</span>
+          <span class="val">{{ selectedRegion.longitude }}, {{ selectedRegion.latitude }}</span>
+        </div>
+        <div class="info-row">
+          <span class="label">ZIP CODE</span>
+          <span class="val">{{ selectedRegion.zipCode }}</span>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, watch, computed } from 'vue'
 import * as echarts from 'echarts'
+import { computed, onMounted, ref, watch } from 'vue'
 
 const props = defineProps({
   regionData: {
@@ -45,9 +54,9 @@ const selectedRegion = ref(null)
 let chart = null
 
 const adminLevels = [
-  { value: 'province', label: '省级' },
-  { value: 'city', label: '市级' },
-  { value: 'county', label: '县级' }
+  { value: 'province', label: 'PROVINCE' },
+  { value: 'city', label: 'CITY' },
+  { value: 'county', label: 'COUNTY' }
 ]
 
 // 处理区域数据，按行政级别分组
@@ -121,12 +130,16 @@ const initMap = () => {
   const option = {
     tooltip: {
       trigger: 'item',
+      backgroundColor: 'rgba(255,255,255,0.95)',
+      borderColor: '#FFE600',
+      borderWidth: 1,
+      textStyle: { color: '#0a0a0a', fontFamily: 'JetBrains Mono' },
       formatter: function (params) {
         return `
-          <div style="font-weight: bold;">${params.name}</div>
-          <div>经度: ${params.data.longitude}</div>
-          <div>纬度: ${params.data.latitude}</div>
-          <div>邮编: ${params.data.zipCode}</div>
+          <div style="font-weight: bold; color: #FFE600; border-bottom: 1px solid #ddd; margin-bottom: 4px;">${params.name}</div>
+          <div>LNG: ${params.data.longitude}</div>
+          <div>LAT: ${params.data.latitude}</div>
+          <div>ZIP: ${params.data.zipCode}</div>
         `
       }
     },
@@ -136,14 +149,15 @@ const initMap = () => {
       max: 100,
       left: 'left',
       top: 'bottom',
-      text: ['高', '低'],
+      text: ['HIGH', 'LOW'],
       calculable: true,
+      textStyle: { color: '#666', fontFamily: 'JetBrains Mono' },
       inRange: {
-        color: ['#4575b4', '#74add1', '#abd9e9', '#e0f3f8', '#fee090', '#fdae61', '#f46d43', '#d73027']
+        color: ['#ddd333', '#4d4500', '#665c00', '#998a00', '#ccb800', '#FFE600']
       }
     },
     series: [{
-      name: '行政区划',
+      name: 'REGION',
       type: 'scatter',
       coordinateSystem: 'geo',
       data: currentData,
@@ -158,7 +172,9 @@ const initMap = () => {
       label: {
         show: true,
         formatter: '{b}',
-        position: 'right'
+        position: 'right',
+        color: '#0a0a0a',
+        fontFamily: 'JetBrains Mono'
       },
       emphasis: {
         focus: 'series',
@@ -167,7 +183,7 @@ const initMap = () => {
         }
       },
       itemStyle: {
-        borderColor: '#fff',
+        borderColor: '#000',
         borderWidth: 1
       }
     }],
@@ -175,11 +191,12 @@ const initMap = () => {
       map: 'China',
       roam: true,
       emphasis: {
-        areaColor: '#fbb03b'
+        areaColor: '#FFE600',
+        label: { color: '#000' }
       },
       itemStyle: {
-        areaColor: '#323c48',
-        borderColor: '#111'
+        areaColor: '#1a1a1a',
+        borderColor: '#ddd'
       }
     }
   }
@@ -228,8 +245,7 @@ onUnmounted(() => {
   position: relative;
   width: 100%;
   height: 600px;
-  background: #1a1a1a;
-  border-radius: 8px;
+  background: transparent;
   overflow: hidden;
 }
 
@@ -238,23 +254,32 @@ onUnmounted(() => {
   top: 10px;
   left: 10px;
   z-index: 100;
-  background: rgba(0, 0, 0, 0.7);
-  padding: 10px;
-  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.8);
+  padding: 4px;
+  border: 1px solid #ddd;
 }
 
 .map-controls button {
-  background: #333;
-  color: white;
+  background: transparent;
+  color: #666;
   border: none;
-  padding: 5px 10px;
+  padding: 4px 12px;
   margin: 0 2px;
-  border-radius: 3px;
   cursor: pointer;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+
+.map-controls button:hover {
+  color: #0a0a0a;
+  background: rgba(0,0,0,0.1);
 }
 
 .map-controls button.active {
-  background: #1890ff;
+  background: #FFE600;
+  color: #000;
+  font-weight: bold;
 }
 
 .map-area {
@@ -266,21 +291,44 @@ onUnmounted(() => {
   position: absolute;
   top: 10px;
   right: 10px;
-  background: rgba(0, 0, 0, 0.8);
+  background: rgba(0, 0, 0, 0.9);
   color: white;
-  padding: 15px;
-  border-radius: 4px;
+  padding: 12px;
+  border: 1px solid #ddd;
   max-width: 300px;
   z-index: 100;
 }
 
 .region-info-panel h3 {
-  margin: 0 0 10px 0;
-  color: #1890ff;
+  margin: 0 0 8px 0;
+  color: #FFE600;
+  font-family: "Oswald", sans-serif;
+  font-size: 16px;
+  font-weight: bold;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 4px;
+  text-transform: uppercase;
 }
 
-.region-details p {
-  margin: 5px 0;
+.region-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  font-family: "JetBrains Mono", monospace;
   font-size: 12px;
+}
+
+.label {
+  color: #666;
+}
+
+.val {
+  color: #0a0a0a;
+  font-weight: bold;
 }
 </style>

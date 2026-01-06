@@ -1,8 +1,8 @@
 <template>
   <div class="wrap">
     <div class="heading">
-      <h3>污染类型聚类散点</h3>
-      <span class="sub">特征值占比</span>
+      <h3>POLLUTION TYPE CLUSTERING</h3>
+      <span class="sub">FEATURE RATIO</span>
     </div>
     <VChart :option="option" autoresize class="chart" @click="handleClick" />
   </div>
@@ -27,6 +27,16 @@ const palette = {
   未知: "#9ca3af",
 };
 
+const typeMap = {
+  "标准型": "STANDARD",
+  "偏二次型": "SECONDARY",
+  "偏燃煤型": "COAL",
+  "偏交通型": "TRAFFIC",
+  "偏燃烧型": "COMBUSTION",
+  "偏颗粒物型": "PARTICULATE",
+  "未知": "UNKNOWN"
+};
+
 const option = computed(() => {
   const data = props.points.map((p) => ({
     name: p.name,
@@ -37,38 +47,61 @@ const option = computed(() => {
   return {
     backgroundColor: "transparent",
     tooltip: {
+      backgroundColor: "rgba(20, 20, 20, 0.9)",
+      borderColor: "rgba(255, 255, 255, 0.15)",
+      textStyle: { color: "#0a0a0a", fontFamily: 'JetBrains Mono' },
       formatter: (p) => {
         const d = data[p.dataIndex];
-        return `${d.name}<br/>类型：${d.type}<br/>主导：${d.primary}<br/>颗粒占比：${d.value[0]}<br/>O3占比：${d.value[1]}`;
+        const typeEn = typeMap[d.type] || d.type;
+        return `<div style="font-weight:bold;margin-bottom:4px;font-family:'Oswald'">${d.name}</div>
+                <div style="font-size:12px">TYPE: ${typeEn}</div>
+                <div style="font-size:12px">PRIMARY: ${d.primary}</div>
+                <div style="font-size:12px">PARTICULATE: ${d.value[0].toFixed(2)}</div>
+                <div style="font-size:12px">O3: ${d.value[1].toFixed(2)}</div>`;
       },
     },
     xAxis: {
-      name: "颗粒物占比 (PM2.5+PM10)",
+      name: "PARTICULATE RATIO",
       min: 0,
       max: 1,
-      axisLabel: { color: "#cdd9e5" },
-      nameTextStyle: { color: "#cdd9e5" },
+      axisLine: { lineStyle: { color: "rgba(0,0,0,0.1)" } },
+      axisLabel: { color: "#666", fontFamily: 'JetBrains Mono' },
+      nameTextStyle: { color: "#666", fontFamily: 'JetBrains Mono' },
+      splitLine: { lineStyle: { color: "rgba(0,0,0,0.05)" } },
     },
     yAxis: {
-      name: "二次污染占比 (O3)",
+      name: "O3 RATIO",
       min: 0,
       max: 1,
-      axisLabel: { color: "#cdd9e5" },
-      nameTextStyle: { color: "#cdd9e5" },
+      axisLine: { lineStyle: { color: "rgba(0,0,0,0.1)" } },
+      axisLabel: { color: "#666", fontFamily: 'JetBrains Mono' },
+      nameTextStyle: { color: "#666", fontFamily: 'JetBrains Mono' },
+      splitLine: { lineStyle: { color: "rgba(0,0,0,0.05)" } },
     },
     series: [
       {
         type: "scatter",
-        symbolSize: (p) => 10 + Math.sqrt(p[2] || 0) * 15, // 缩小点大小
+        symbolSize: (p) => 8 + Math.sqrt(p[2] || 0) * 12,
         data,
         itemStyle: {
           color: (p) => {
             const d = data[p.dataIndex];
             return palette[d.type] || "#9ca3af";
           },
-          opacity: 0.82,
+          opacity: 0.7,
+          borderColor: "rgba(255,255,255,0.2)",
+          borderWidth: 1,
         },
-        emphasis: { focus: "self", itemStyle: { opacity: 1 } },
+        emphasis: {
+          focus: "self",
+          itemStyle: {
+            opacity: 1,
+            borderColor: "#0a0a0a",
+            borderWidth: 2,
+            shadowBlur: 10,
+            shadowColor: "rgba(0,0,0,0.5)",
+          },
+        },
       },
     ],
   };
@@ -84,16 +117,26 @@ function handleClick(p) {
 .wrap {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
 }
 .heading {
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  gap: 10px;
+  border-bottom: 1px solid var(--c-border);
+  padding-bottom: 5px;
+}
+h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 16px;
+  color: var(--c-white);
 }
 .sub {
-  color: #9eb1c7;
-  font-size: 12px;
+  color: var(--c-gray);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
 }
 .chart {
   height: 320px;

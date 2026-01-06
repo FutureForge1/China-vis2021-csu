@@ -2,10 +2,10 @@
   <div class="wrap">
     <div class="heading">
       <div>
-        <h3>扩散 / 风廓线</h3>
-        <span class="sub">当日 u / v 均值形成的风向玫瑰</span>
+        <h3>WIND COMPASS</h3>
+        <span class="sub">DAILY U/V MEAN</span>
       </div>
-      <div class="badge">风速 m/s</div>
+      <div class="badge">SPEED m/s</div>
     </div>
     <VChart :option="option" autoresize class="chart" />
   </div>
@@ -18,28 +18,40 @@ const props = defineProps({
   data: { type: Array, default: () => [] }, // [{dir,value}]
 });
 
+function directionToAngle(dir) {
+  const map = {
+    N: 0, NNE: 22.5, NE: 45, ENE: 67.5,
+    E: 90, ESE: 112.5, SE: 135, SSE: 157.5,
+    S: 180, SSW: 202.5, SW: 225, WSW: 247.5,
+    W: 270, WNW: 292.5, NW: 315, NNW: 337.5,
+  };
+  return map[dir] ?? 0;
+}
+
 const option = computed(() => {
   const dirs = props.data.map((d) => d.dir);
   const values = props.data.map((d) => d.value);
+  const angles = dirs.map(directionToAngle);
   const max = values.length ? Math.max(...values) : 1;
-  const gradient = ["#7cc5ff", "#5aa0f7", "#3f7ae0", "#3059c8"];
+  const gradient = ["#FFE600", "#FFD700", "#FFC107", "#FFB300"];
 
   return {
     backgroundColor: "transparent",
     tooltip: {
-      backgroundColor: "rgba(15,23,42,0.9)",
-      borderColor: "rgba(255,255,255,0.08)",
-      textStyle: { color: "#e5ecf4" },
+      backgroundColor: "rgba(255,255,255,0.95)",
+      borderColor: "rgba(0,0,0,0.08)",
+      textStyle: { color: "#0a0a0a", fontFamily: 'JetBrains Mono' },
       formatter: (p) =>
-        `${dirs[p.dataIndex]}<br/>风速：${values[p.dataIndex].toFixed(2)} m/s`,
+        `<div style="font-family:'Oswald';font-weight:bold">${dirs[p.dataIndex]}</div>
+         <div style="font-size:12px">SPEED: ${values[p.dataIndex].toFixed(2)} m/s</div>`,
     },
     polar: { radius: ["12%", "78%"] },
     angleAxis: {
       type: "category",
       data: dirs,
       boundaryGap: false,
-      axisLine: { lineStyle: { color: "rgba(15,23,42,0.25)" } },
-      axisLabel: { color: "#475569", fontSize: 11 },
+      axisLine: { lineStyle: { color: "rgba(0,0,0,0.1)" } },
+      axisLabel: { color: "#666", fontSize: 11, fontFamily: 'JetBrains Mono' },
       axisTick: { show: false },
     },
     radiusAxis: {
@@ -47,54 +59,31 @@ const option = computed(() => {
       max: Math.max(max, 1),
       axisLine: { show: false },
       axisTick: { show: false },
-      axisLabel: { color: "#94a3b8" },
-      splitLine: { lineStyle: { color: "rgba(15,23,42,0.08)" } },
+      axisLabel: { color: "#666", fontFamily: 'JetBrains Mono' },
+      splitLine: { lineStyle: { color: "rgba(0,0,0,0.05)" } },
     },
     series: [
-      {
-        type: "bar",
-        coordinateSystem: "polar",
-        data: values.map((v, i) => ({
-          value: v,
-          itemStyle: {
-            color: {
-              type: "linear",
-              x: 0,
-              y: 0,
-              x2: 0,
-              y2: 1,
-              colorStops: [
-                { offset: 0, color: gradient[0] },
-                { offset: 1, color: gradient[2] },
-              ],
-            },
-            opacity: 0.78,
-          },
-          name: dirs[i],
-        })),
-        barWidth: 14,
-        roundCap: true,
-        emphasis: { focus: "self" },
-        label: {
-          show: true,
-          position: "outside",
-          formatter: ({ value }) => (value > 0 ? value.toFixed(1) : ""),
-          color: "#475569",
-          fontSize: 10,
-        },
-      },
       {
         type: "line",
         coordinateSystem: "polar",
         data: values,
         smooth: true,
-        areaStyle: { color: "rgba(63,122,224,0.14)" },
+        areaStyle: { color: "rgba(255, 230, 0, 0.14)" },
         lineStyle: { color: gradient[3], width: 2 },
-        symbol: "circle",
-        symbolSize: 5,
+        symbol: "none",
         itemStyle: { color: gradient[3] },
         z: 3,
       },
+      {
+        type: "scatter",
+        coordinateSystem: "polar",
+        data: values.map((v, i) => ({ value: v, symbolRotate: angles[i] })),
+        symbol: "arrow",
+        symbolSize: 14,
+        itemStyle: { color: "#0a0a0a" },
+        emphasis: { scale: true },
+        z: 4,
+      }
     ],
   };
 });
@@ -104,28 +93,37 @@ const option = computed(() => {
 .wrap {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
 }
 .heading {
   display: flex;
   align-items: center;
-  gap: 6px;
   justify-content: space-between;
-  flex-wrap: wrap;
+  gap: 10px;
+  border-bottom: 1px solid var(--c-border);
+  padding-bottom: 5px;
+}
+h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 16px;
+  color: var(--c-white);
 }
 .sub {
-  color: #9eb1c7;
-  font-size: 12px;
+  color: var(--c-gray);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
 }
 .badge {
-  font-size: 12px;
-  padding: 4px 8px;
-  border-radius: 999px;
-  background: rgba(63, 122, 224, 0.12);
-  border: 1px solid rgba(63, 122, 224, 0.32);
-  color: #1f2a44;
+  font-size: 10px;
+  color: var(--c-black);
+  background: var(--c-yellow);
+  padding: 2px 6px;
+  font-family: var(--font-mono);
+  font-weight: bold;
 }
 .chart {
-  height: 280px;
+  height: 250px;
 }
 </style>

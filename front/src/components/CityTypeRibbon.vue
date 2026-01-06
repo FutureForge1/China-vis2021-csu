@@ -1,10 +1,13 @@
 <template>
   <div class="wrap">
     <div class="heading">
-      <h3>城市类型变化凹凸图</h3>
-      <span class="sub">{{ province || "全国" }} · {{ monthLabel }}</span>
+      <h3>CITY TYPE BUMP CHART</h3>
+      <span class="sub">{{ province || "NATIONAL" }} · {{ monthLabel }}</span>
     </div>
-    <VChart :option="option" autoresize class="chart" />
+    <div v-if="!dates || dates.length === 0 || !series || series.length === 0" class="no-data">
+      <p>{{ province ? 'Loading province data...' : 'Select a province to view type evolution' }}</p>
+    </div>
+    <VChart v-else :option="option" class="chart" />
   </div>
 </template>
 
@@ -18,7 +21,8 @@ const props = defineProps({
   province: { type: String, default: "" },
 });
 
-const colors = ["#d23669", "#d66b6b", "#d99c7b", "#d1b181", "#8cb972", "#6ba4c1", "#8b82c9", "#9ca3af"];
+// Endfield Yellow Scale
+const colors = ["#FFE600", "#ccb800", "#998a00", "#665c00", "#4d4500", "#ddd333", "#1a1a1a", "#000000"];
 
 const monthLabel = computed(() => (props.dates[0] || "").slice(0, 7));
 
@@ -35,10 +39,10 @@ const option = computed(() => {
     return {
       backgroundColor: "transparent",
       title: {
-        text: '暂无数据',
+        text: 'NO DATA',
         left: 'center',
         top: 'center',
-        textStyle: { color: '#94a3b8', fontSize: 14 }
+        textStyle: { color: '#666', fontSize: 14, fontFamily: "JetBrains Mono" }
       }
     };
   }
@@ -49,20 +53,34 @@ const option = computed(() => {
     backgroundColor: "transparent",
     tooltip: {
       trigger: "item",
-      formatter: (p) => `${p.seriesName}<br/>${props.dates[p.dataIndex]}<br/>类型：${props.typeOrder[p.value] || "-"}`,
+      backgroundColor: "rgba(255,255,255,0.95)",
+      borderColor: "#FFE600",
+      borderWidth: 1,
+      textStyle: {
+        color: "#0a0a0a",
+        fontFamily: "JetBrains Mono",
+        fontSize: 12
+      },
+      formatter: (p) => {
+        return `<div style="border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-bottom: 4px; color: #FFE600; font-weight: bold;">${p.seriesName}</div>
+                <div style="display: flex; justify-content: space-between; gap: 12px;"><span>DATE:</span><span style="font-weight: bold; color: #0a0a0a;">${props.dates[p.dataIndex]}</span></div>
+                <div style="display: flex; justify-content: space-between; gap: 12px;"><span>TYPE:</span><span style="font-weight: bold; color: #0a0a0a;">${props.typeOrder[p.value] || "-"}</span></div>`;
+      },
     },
   grid: { left: 10, right: 100, top: 20, bottom: 30, containLabel: true },
   xAxis: {
     type: "category",
     data: props.dates.map((d) => d.slice(5)),
     boundaryGap: false,
-    axisLabel: { color: "#94a3b8" },
-    splitLine: { show: true, lineStyle: { color: "rgba(15,23,42,0.08)" } },
+    axisLabel: { color: "#666", fontFamily: "JetBrains Mono", fontSize: 10 },
+    splitLine: { show: true, lineStyle: { color: "rgba(0,0,0,0.05)" } },
+    axisLine: { lineStyle: { color: "#ddd" } },
+    axisTick: { show: false }
   },
   yAxis: {
     type: "category",
     data: props.typeOrder.slice().reverse(),
-    axisLabel: { color: "#475569" },
+    axisLabel: { color: "#666", fontFamily: "JetBrains Mono", fontSize: 10 },
     axisLine: { show: false },
     axisTick: { show: false },
     splitLine: { show: false },
@@ -87,17 +105,49 @@ const option = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  height: 100%;
 }
 .heading {
   display: flex;
   align-items: baseline;
   gap: 8px;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 4px;
+}
+h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: bold;
+  color: #0a0a0a;
+  font-family: "Oswald", sans-serif;
+  letter-spacing: 1px;
+  text-transform: uppercase;
 }
 .sub {
-  color: #94a3b8;
-  font-size: 12px;
+  color: #000;
+  background: #FFE600;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-weight: bold;
+  font-family: "JetBrains Mono", monospace;
+  text-transform: uppercase;
 }
 .chart {
-  height: 320px;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  height: 450px;
+}
+
+.no-data {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #666;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  text-align: center;
+  padding: 40px;
 }
 </style>

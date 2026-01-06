@@ -1,8 +1,8 @@
 <template>
   <div class="wrap">
     <div class="heading">
-      <h3>污染-气象相关性</h3>
-      <span class="sub">皮尔逊</span>
+      <h3>POLLUTION-METEOROLOGY CORRELATION</h3>
+      <span class="sub">PEARSON</span>
     </div>
     <VChart :option="option" autoresize class="chart" />
   </div>
@@ -29,22 +29,36 @@ const option = computed(() => {
   return {
     backgroundColor: "transparent",
     tooltip: {
+      backgroundColor: "rgba(255,255,255,0.95)",
+      borderColor: "#FFE600",
+      borderWidth: 1,
+      textStyle: {
+        color: "#0a0a0a",
+        fontFamily: "JetBrains Mono",
+        fontSize: 12
+      },
       formatter: (p) => {
         const item = props.matrix[p.dataIndex];
-        return `${item.pollutant} / ${item.meteor}<br/>corr: ${item.value}`;
+        return `<div style="border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-bottom: 4px; color: #FFE600; font-weight: bold;">CORRELATION</div>
+                <div style="display: flex; justify-content: space-between; gap: 12px;"><span>PAIR:</span><span style="font-weight: bold; color: #0a0a0a;">${item.pollutant} / ${item.meteor}</span></div>
+                <div style="display: flex; justify-content: space-between; gap: 12px;"><span>VALUE:</span><span style="font-weight: bold; color: #0a0a0a;">${item.value}</span></div>`;
       },
     },
     xAxis: {
       type: "category",
       data: meteors,
-      axisLabel: { color: "#cdd9e5" },
-      splitArea: { show: true },
+      axisLabel: { color: "#666", fontFamily: "JetBrains Mono", fontSize: 10 },
+      splitArea: { show: true, areaStyle: { color: ["rgba(0,0,0,0.02)", "rgba(0,0,0,0.05)"] } },
+      axisLine: { lineStyle: { color: "#ddd" } },
+      axisTick: { show: false }
     },
     yAxis: {
       type: "category",
       data: pollutants,
-      axisLabel: { color: "#cdd9e5" },
-      splitArea: { show: true },
+      axisLabel: { color: "#666", fontFamily: "JetBrains Mono", fontSize: 10 },
+      splitArea: { show: true, areaStyle: { color: ["rgba(0,0,0,0.02)", "rgba(0,0,0,0.05)"] } },
+      axisLine: { show: false },
+      axisTick: { show: false }
     },
     visualMap: {
       min: -1,
@@ -52,9 +66,11 @@ const option = computed(() => {
       calculable: true,
       orient: "horizontal",
       left: "center",
-      bottom: 10,
+      bottom: 0,
+      itemWidth: 10,
+      itemHeight: 100,
       inRange: { color: ["#2563eb", "#e5e7eb", "#dc2626"] },
-      textStyle: { color: "#cdd9e5" },
+      textStyle: { color: "#666", fontFamily: "JetBrains Mono", fontSize: 10 },
     },
     series: [
       {
@@ -64,7 +80,13 @@ const option = computed(() => {
         label: {
           show: true,
           formatter: (p) => props.matrix[p.dataIndex].value,
-          color: "#0f172a",
+          color: "#000",
+          fontFamily: "JetBrains Mono",
+          fontSize: 10
+        },
+        itemStyle: {
+          borderColor: "#000",
+          borderWidth: 1
         },
         emphasis: {
           itemStyle: { shadowBlur: 10, shadowColor: "rgba(0,0,0,0.3)" },
@@ -80,17 +102,33 @@ const option = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  height: 100%;
 }
 .heading {
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  gap: 8px;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 4px;
+}
+h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: bold;
+  color: #0a0a0a;
+  font-family: "Oswald", sans-serif;
+  letter-spacing: 1px;
+  text-transform: uppercase;
 }
 .sub {
-  color: #9eb1c7;
-  font-size: 12px;
+  color: #FFE600;
+  font-size: 10px;
+  font-family: "JetBrains Mono", monospace;
+  text-transform: uppercase;
 }
 .chart {
-  height: 260px;
+  flex: 1;
+  min-height: 250px;
+  width: 100%;
 }
 </style>

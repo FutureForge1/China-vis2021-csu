@@ -6,8 +6,6 @@
  */
 import * as echarts from "echarts";
 
-const BASES = ["/data/2013", "/data/2013/01", "/data/2013/1"];
-const HOUR_BASE = "/data/2013_hour";
 
 // 支持多年份的动态BASE路径
 function getYearBases(year) {
@@ -532,6 +530,44 @@ export async function loadOneDay(dateStr) {
   }
 }
 
+export function getProvinceByCity(cityName) {
+  if (!REGION_INDEX) return "";
+  // 尝试直接查找
+  if (REGION_INDEX.has(cityName)) {
+    // 这里 REGION_INDEX 只存了坐标，没有存层级关系...
+    // 我们需要另一个映射表。
+    // 由于 loadRegionIndex 已经加载了 region.json，我们可以把映射表挂在 REGION_INDEX 上或者单独导出
+  }
+  return "";
+}
+
+let CITY_TO_PROVINCE = null;
+
+export async function loadCityToProvinceMap() {
+  if (CITY_TO_PROVINCE) return CITY_TO_PROVINCE;
+  try {
+    const res = await fetch("/region.json");
+    const list = await res.json();
+    const map = new Map();
+    for (const item of list) {
+      const p = normalizeProvince(item.province);
+      if (item.city) {
+        map.set(item.city, p);
+        map.set(stripSuffix(item.city), p);
+      }
+      if (item.county) {
+        map.set(item.county, p);
+        map.set(stripSuffix(item.county), p);
+      }
+    }
+    CITY_TO_PROVINCE = map;
+    return map;
+  } catch (e) {
+    console.warn("Failed to load city-province map", e);
+    return new Map();
+  }
+}
+
 export function normalizeProvince(name) {
   if (!name) return "";
   let n = String(name).split("|").pop().trim();
@@ -589,19 +625,21 @@ export async function loadOneMonth(yearMonth) {
 
 export function getValueFromRow(row, field, granularity) {
   if (granularity === "month") {
-    // 如果是月度数据，且 row 里有 pm25_mean，则优先取之
+    // 优先尝试 _mean 后缀
     const meanKey = `${field}_mean`;
     if (row[meanKey] !== undefined) {
       return Number(row[meanKey]);
     }
-    // 如果找不到 _mean (比如 type 这种非数值字段)，回退到原始字段名
-    return row[field];
+    // 回退到原始字段 (如果数据已经被标准化)
+    return Number(row[field]);
   } else if (granularity === "year") {
-    // 假设 yearly.json 也是类似结构
-    const meanKey = `${field}_mean`; // 或者 yearly_mean，取决于你的 yearly json
-    return Number(row[meanKey] ?? row[field]);
+    // 优先尝试 yearly_mean
+    const yearKey = `${field}_yearly_mean`;
+    if (row[yearKey] !== undefined) {
+      return Number(row[yearKey]);
+    }
+    return Number(row[field]);
   }
-  // 日数据直接取 field
   return Number(row[field]);
 }
 
@@ -878,7 +916,7 @@ export function computeAQI(row) {
   const metrics = ["pm25", "pm10", "so2", "no2", "co", "o3"];
   const iaqis = metrics.map((m) => ({
     pollutant: m,
-    iaqi: computeIAQI(row?.[m], m),
+    iaqi: computeIAQI(row?.[m] ?? row?.[`${m}_mean`], m),
   }));
   const primary = iaqis.reduce(
     (acc, cur) => (cur.iaqi > (acc?.iaqi ?? -Infinity) ? cur : acc),
@@ -957,45 +995,7 @@ export function computeAQIRanking(rows, field = "province", topN = 15) {
   return items.sort((a, b) => b.aqi - a.aqi).slice(0, topN);
 }
 
-// 月聚合数据专用AQI排名计算函数
-export function computeAQIRankingMonthly(rows, field = "province", topN = 15) {
-  const groups = new Map();
-  for (const row of rows) {
-    const key = row?.[field] || row?.province || row?.city;
-    if (!key) continue;
-    const { aqi, primaryPollutant } = computeAQIMonthly(row);
-    if (!Number.isFinite(aqi)) continue;
-    if (!groups.has(key)) {
-      groups.set(key, {
-        sumAQI: 0,
-        count: 0,
-        primaryCounts: new Map(),
-      });
-    }
-    const g = groups.get(key);
-    g.sumAQI += aqi;
-    g.count += 1;
-    if (primaryPollutant) {
-      g.primaryCounts.set(primaryPollutant, (g.primaryCounts.get(primaryPollutant) || 0) + 1);
-    }
-  }
 
-  const items = [];
-  for (const [name, g] of groups.entries()) {
-    const avg = g.count ? g.sumAQI / g.count : 0;
-    let primary = null;
-    let best = -Infinity;
-    for (const [p, c] of g.primaryCounts.entries()) {
-      if (c > best) {
-        best = c;
-        primary = p;
-      }
-    }
-    items.push({ name, aqi: Number(avg.toFixed(1)), primaryPollutant: primary });
-  }
-
-  return items.sort((a, b) => b.aqi - a.aqi).slice(0, topN);
-}
 
 // Prepare parallel coordinates data: averages by region.
 export function buildParallelData(rows, field = "province", topN = 30, provinceFilter = null) {
@@ -1172,10 +1172,16 @@ export function computeTypeTimeline(dayEntries, field = "city", provinceFilter =
 
 function parseDateParts(dateStr) {
   const parts = String(dateStr || "").split("-");
-  if (parts.length !== 3) return null;
-  const [y, m, d] = parts.map((p) => Number(p));
-  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
-  return { year: y, month: m, day: d };
+  if (parts.length === 3) {
+    const [y, m, d] = parts.map((p) => Number(p));
+    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
+    return { year: y, month: m, day: d };
+  } else if (parts.length === 2) {
+    const [y, m] = parts.map((p) => Number(p));
+    if (!Number.isFinite(y) || !Number.isFinite(m)) return null;
+    return { year: y, month: m, day: 1 }; // Default to day 1 for monthly data
+  }
+  return null;
 }
 
 function aqiToLevel(aqi) {
@@ -1190,9 +1196,17 @@ function aqiToLevel(aqi) {
 export function computeYearlyRadial(dayEntries) {
   const yearly = new Map();
   for (const entry of dayEntries) {
+    // 尝试解析日期，如果失败则尝试直接作为年份处理
+    let y;
     const parts = parseDateParts(entry.date);
-    if (!parts) continue;
-    const y = parts.year;
+    if (parts) {
+      y = parts.year;
+    } else if (/^\d{4}$/.test(String(entry.date))) {
+      y = Number(entry.date);
+    } else {
+      continue;
+    }
+
     if (!yearly.has(y)) {
       yearly.set(y, {
         sums: Object.fromEntries(POLLUTANTS.map((m) => [m, 0])),
@@ -1202,7 +1216,8 @@ export function computeYearlyRadial(dayEntries) {
     const bucket = yearly.get(y);
     for (const row of entry.data) {
       for (const m of POLLUTANTS) {
-        const v = Number(row?.[m]);
+        // 使用 getValueFromRow 统一获取值，支持 _yearly_mean 等后缀
+        const v = Number(getValueFromRow(row, m, "year"));
         if (Number.isFinite(v) && v > 0) {
           bucket.sums[m] += v;
           bucket.counts[m] += 1;
@@ -1257,19 +1272,46 @@ export function computeAQIRain(dayEntries, monthFilter = 1) {
   return { years, levels, data };
 }
 
-export function computeAQICompareLines(dayEntries, monthFilter = 1) {
-  const maxDay = 31;
-  const yearsMap = new Map(); // year -> array length 31
+export function computeAQICompareLines(dayEntries, monthFilter = null) {
+  // 如果 monthFilter 为 null，则计算全年 (366天)
+  // 否则计算指定月份 (31天)
+  const isAllYear = monthFilter === null;
+  const maxDay = isAllYear ? 366 : 31;
+  const yearsMap = new Map();
+
+  // 辅助函数：计算一年中的第几天 (1-366)
+  const getDayOfYear = (m, d) => {
+    const daysInMonth = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let day = d;
+    for (let i = 1; i < m; i++) day += daysInMonth[i];
+    return day;
+  };
 
   for (const entry of dayEntries) {
     const parts = parseDateParts(entry.date);
-    if (!parts || parts.month !== monthFilter) continue;
+    if (!parts) continue;
+
+    // 过滤月份
+    if (!isAllYear && parts.month !== monthFilter) continue;
+
     const year = parts.year;
     if (!yearsMap.has(year)) {
       yearsMap.set(year, new Array(maxDay).fill(null));
     }
     const arr = yearsMap.get(year);
-    const dayIdx = Math.min(Math.max(parts.day, 1), maxDay) - 1;
+
+    let dayIdx;
+    if (isAllYear) {
+      // 全年模式：使用 Day of Year
+      dayIdx = getDayOfYear(parts.month, parts.day) - 1;
+    } else {
+      // 单月模式：直接使用 day
+      dayIdx = Math.min(Math.max(parts.day, 1), maxDay) - 1;
+    }
+
+    // 防止越界 (闰年等)
+    if (dayIdx >= maxDay) dayIdx = maxDay - 1;
+
     let sum = 0;
     let cnt = 0;
     for (const row of entry.data) {
@@ -1279,15 +1321,29 @@ export function computeAQICompareLines(dayEntries, monthFilter = 1) {
         cnt += 1;
       }
     }
-    arr[dayIdx] = cnt ? Number((sum / cnt).toFixed(1)) : null;
+    // 如果同一天有多条记录(不太可能)，取平均；或者直接覆盖
+    // 这里假设 entry.data 是当天的所有城市数据，算出的 sum/cnt 是当天的全国/区域平均AQI
+    if (cnt > 0) {
+      arr[dayIdx] = Number((sum / cnt).toFixed(1));
+    }
   }
 
   const years = Array.from(yearsMap.keys()).sort((a, b) => a - b);
   const series = years.map((y) => ({
     name: String(y),
-    data: yearsMap.get(y),
+    data: yearsMap.get(y), // ECharts 会自动处理 null (断点)
   }));
-  const days = Array.from({ length: maxDay }, (_, i) => String(i + 1));
+
+  // 生成 x 轴标签
+  let days;
+  if (isAllYear) {
+    // 简化标签，只显示月份首日? 或者 1..365
+    // 为了不让 x 轴太挤，可以只生成数字，ECharts 会自动抽样
+    days = Array.from({ length: maxDay }, (_, i) => String(i + 1));
+  } else {
+    days = Array.from({ length: maxDay }, (_, i) => String(i + 1));
+  }
+
   return { days, series };
 }
 
@@ -1313,7 +1369,8 @@ export function computeMonthlyRing(dayEntries) {
         bucket.aqiCount += 1;
       }
       for (const m of POLLUTANTS) {
-        const v = Number(row?.[m]);
+        // 使用 getValueFromRow 统一获取值
+        const v = Number(getValueFromRow(row, m, "month"));
         if (Number.isFinite(v) && v > 0) {
           bucket.sums[m] += v;
           bucket.counts[m] += 1;
@@ -1540,6 +1597,15 @@ export function computeCityMonthStats(dayEntries, cityName, monthFilter) {
   const metrics = ["pm25", "pm10", "so2", "no2", "co", "o3"];
   const agg = new Map(); // metric -> {sum,count,min,max}
   const target = normalizeRegionName(cityName);
+
+  // Detect granularity
+  let isMonthlyData = false;
+  if (dayEntries.length > 0 && dayEntries[0].data && dayEntries[0].data.length > 0) {
+    const firstRow = dayEntries[0].data[0];
+    if (firstRow.pm25_mean !== undefined) isMonthlyData = true;
+  }
+  const granularity = isMonthlyData ? "month" : "day";
+
   for (const m of metrics) {
     agg.set(m, { sum: 0, count: 0, min: Infinity, max: -Infinity });
   }
@@ -1547,12 +1613,15 @@ export function computeCityMonthStats(dayEntries, cityName, monthFilter) {
   for (const entry of dayEntries) {
     const parts = parseDateParts(entry.date);
     if (!parts || (monthFilter && parts.month !== monthFilter)) continue;
+
+    if (!entry.data) continue;
+
     for (const row of entry.data) {
       const name = normalizeRegionName(row.city) || normalizeRegionName(row.province);
       if (!name) continue;
       if (target && name !== target) continue;
       for (const m of metrics) {
-        const v = Number(row?.[m]);
+        const v = Number(getValueFromRow(row, m, granularity));
         if (!Number.isFinite(v)) continue;
         const a = agg.get(m);
         a.sum += v;
@@ -1570,12 +1639,13 @@ export function computeCityMonthStats(dayEntries, cityName, monthFilter) {
       out[m] = { avg: 0, min: 0, max: 0 };
     } else {
       out[m] = {
-        avg: a.sum / a.count,
-        min: a.min,
-        max: a.max,
+        avg: Number((a.sum / a.count).toFixed(1)),
+        min: Number(a.min.toFixed(1)),
+        max: Number(a.max.toFixed(1)),
       };
     }
   }
+
   return out;
 }
 
@@ -1651,7 +1721,7 @@ export function computeCityMonthStats(dayEntries, cityName, monthFilter) {
 // 【修改】: 城市类型演变轨迹
 // 策略：使用“核心词匹配”替代“强制加省”，解决城市名匹配失败和全称简称不一致的问题。
 // ==========================================
-export function computeCityTypeTrajectory(dayEntries, provinceFilter = null, monthFilter = null) {
+export function computeCityTypeTrajectory(dayEntries, provinceFilter = null, monthFilter = null, granularity = "day") {
   const typeOrder = [
     "偏燃烧型",
     "偏钢铁型",
@@ -1677,7 +1747,16 @@ export function computeCityTypeTrajectory(dayEntries, provinceFilter = null, mon
 
   for (const entry of dayEntries) {
     const parts = parseDateParts(entry.date);
-    if (!parts || (monthFilter && parts.month !== monthFilter)) continue;
+    // If granularity is month, monthFilter might need to be ignored or handled differently.
+    // Assuming dayEntries are already filtered or we want the whole trajectory.
+    // If monthFilter is provided AND we are doing daily analysis, we filter.
+    // If we are doing monthly analysis (granularity='month'), we probably want the whole year (so ignore monthFilter or check logic).
+
+    // Original logic:
+    if (granularity === "day" && monthFilter && parts && parts.month !== monthFilter) continue;
+
+    // For monthly data, usually we want the full trajectory across months, so we don't filter by single month here 
+    // unless explicitly asked. But usually bump chart is for trend.
 
     dates.push(entry.date);
 
@@ -1708,8 +1787,8 @@ export function computeCityTypeTrajectory(dayEntries, provinceFilter = null, mon
       }
     }
 
-    // 后续逻辑保持不变
-    const typed = computeTypeByRegion(data, "city");
+    // Pass granularity to computeTypeByRegion
+    const typed = computeTypeByRegion(data, "city", granularity);
     const map = new Map(typed.map((t) => [normalizeRegionName(t.name), t.type]));
 
     // 对齐数据长度
@@ -1886,17 +1965,8 @@ export async function getAvailableDatesByGranularity(granularity, year) {
 export function computeTrendSeriesByGranularity(dataEntries, field, granularity) {
   console.log(`[DataDebug] 计算趋势系列: field=${field}, granularity=${granularity}, entries.length=${dataEntries.length}`);
   return dataEntries.map((entry) => {
-    let value;
-    if (granularity === "month") {
-      // 月度数据已经是聚合后的，直接使用平均值字段
-      const avgField = `${field}_mean`;
-      const firstRow = entry.data[0];
-      value = firstRow && firstRow[avgField] ? Number(firstRow[avgField]) : 0;
-      console.log(`[DataDebug] 月度数据直接取值: field=${avgField}, value=${value}`);
-    } else {
-      // 日数据或年数据需要计算平均值
-      value = averageMetric(entry.data, field, granularity);
-    }
+    // 统一使用 averageMetric 计算平均值，它会调用 getValueFromRow 处理字段名
+    const value = averageMetric(entry.data, field, granularity);
     return {
       date: entry.date,
       value: value,
@@ -2161,7 +2231,38 @@ export async function computeCityYearCalendar(year, cityName) {
     const index = await loadIndex(year);
     const days = index.days || [];
 
-    console.log(`[computeCityYearCalendar] 开始加载 ${year} 年 ${cityName} 的日历数据，共 ${days.length} 天`);
+    // Helper to aggregate multiple rows
+    const aggregateRows = (rows) => {
+      let sumPM25 = 0, sumPM10 = 0, sumSO2 = 0, sumNO2 = 0, sumCO = 0, sumO3 = 0;
+      let count = 0;
+
+      for (const r of rows) {
+        // Check for valid numeric data
+        const pm25 = Number(r.pm25);
+        if (Number.isNaN(pm25)) continue; // Simple check, assume if PM2.5 is valid, row is likely valid/usable
+
+        sumPM25 += (Number(r.pm25) || 0);
+        sumPM10 += (Number(r.pm10) || 0);
+        sumSO2 += (Number(r.so2) || 0);
+        sumNO2 += (Number(r.no2) || 0);
+        sumCO += (Number(r.co) || 0);
+        sumO3 += (Number(r.o3) || 0);
+        count++;
+      }
+
+      if (count === 0) return null;
+
+      return {
+        pm25: sumPM25 / count,
+        pm10: sumPM10 / count,
+        so2: sumSO2 / count,
+        no2: sumNO2 / count,
+        co: sumCO / count,
+        o3: sumO3 / count
+      };
+    };
+
+    console.log(`[computeCityYearCalendar] 开始加载 ${year} 年 ${cityName || 'NATIONAL'} 的日历数据，共 ${days.length} 天`);
 
     // 为了性能，批量加载而不是逐个等待
     // 由于日数据文件可能很大，我们分批处理
@@ -2173,22 +2274,35 @@ export async function computeCityYearCalendar(year, cityName) {
         try {
           const dayData = await loadOneDay(dateStr);
 
-          // 查找指定城市的数据
-          const cityRow = dayData.find(row => {
-            const rowCity = row.city || row.province;
-            return rowCity === cityName ||
-              rowCity?.includes(cityName) ||
-              cityName?.includes(rowCity?.replace(/市|县|区$/, ''));
-          });
+          let matchedRows = [];
+          if (!cityName || cityName === 'NATIONWIDE' || cityName === 'CHINA') {
+            matchedRows = dayData;
+          } else {
+            matchedRows = dayData.filter(row => {
+              const rowCity = row.city || row.province;
+              // Strictish matching
+              const matchesProvince = row.province && (row.province === cityName || row.province.includes(cityName));
+              const matchesCity = rowCity === cityName ||
+                rowCity?.includes(cityName) ||
+                cityName?.includes(rowCity?.replace(/市|县|区$/, ''));
 
-          if (cityRow) {
-            const pm25 = Number(cityRow.pm25 ?? 0);
-            const pm10 = Number(cityRow.pm10 ?? 0);
-            const so2 = Number(cityRow.so2 ?? 0);
-            const no2 = Number(cityRow.no2 ?? 0);
-            const co = Number(cityRow.co ?? 0);
-            const o3 = Number(cityRow.o3 ?? 0);
+              return matchesProvince || matchesCity;
+            });
+          }
 
+          let agg = null;
+          if (matchedRows.length === 1) {
+            const r = matchedRows[0];
+            agg = {
+              pm25: Number(r.pm25), pm10: Number(r.pm10), so2: Number(r.so2),
+              no2: Number(r.no2), co: Number(r.co), o3: Number(r.o3)
+            };
+          } else if (matchedRows.length > 1) {
+            agg = aggregateRows(matchedRows);
+          }
+
+          if (agg) {
+            const { pm25, pm10, so2, no2, co, o3 } = agg;
             const aqiInfo = calculateAQI({ pm25, pm10, so2, no2, co, o3 });
 
             return {
@@ -2285,7 +2399,7 @@ export function getAvailableYears() {
  * 获取可用的月份列表（固定1-12月）
  */
 export function getAvailableMonths() {
-  return Array.from({length: 12}, (_, i) => (i + 1).toString().padStart(2, '0'));
+  return Array.from({ length: 12 }, (_, i) => (i + 1).toString().padStart(2, '0'));
 }
 
 /**
@@ -2340,42 +2454,128 @@ function calculateStd(values) {
 }
 
 
-// // 月度数据专用AQI排名计算函数
-// export function computeAQIRankingMonthly(rows, field = "province", topN = 15) {
-//   const groups = new Map();
-//   for (const row of rows) {
-//     const key = row?.[field] || row?.province || row?.city;
-//     if (!key) continue;
-//     const { aqi, primaryPollutant } = computeAQIMonthly(row);
-//     if (!Number.isFinite(aqi)) continue;
-//     if (!groups.has(key)) {
-//       groups.set(key, {
-//         sumAQI: 0,
-//         count: 0,
-//         primaryCounts: new Map(),
-//       });
-//     }
-//     const g = groups.get(key);
-//     g.sumAQI += aqi;
-//     g.count += 1;
-//     if (primaryPollutant) {
-//       g.primaryCounts.set(primaryPollutant, (g.primaryCounts.get(primaryPollutant) || 0) + 1);
-//     }
-//   }
-//
-//   const items = [];
-//   for (const [name, g] of groups.entries()) {
-//     const avg = g.count ? g.sumAQI / g.count : 0;
-//     let primary = null;
-//     let best = -Infinity;
-//     for (const [p, c] of g.primaryCounts.entries()) {
-//       if (c > best) {
-//         best = c;
-//         primary = p;
-//       }
-//     }
-//     items.push({ name, aqi: Number(avg.toFixed(1)), primaryPollutant: primary });
-//   }
-//
-//   return items.sort((a, b) => b.aqi - a.aqi).slice(0, topN);
-// }
+// 月度数据专用AQI排名计算函数
+export function computeAQIRankingMonthly(rows, field = "province", topN = 15) {
+  const groups = new Map();
+  for (const row of rows) {
+    const key = row?.[field] || row?.province || row?.city;
+    if (!key) continue;
+
+    // For monthly data, AQI is often pre-calculated or needs to be calculated from means
+    let aqi = Number(row?.aqi);
+    let primaryPollutant = row?.primaryPollutant;
+
+    if (!Number.isFinite(aqi)) {
+      // fallback: calculate from means
+      const agg = {
+        pm25: Number(row?.pm25_mean || row?.pm25),
+        pm10: Number(row?.pm10_mean || row?.pm10),
+        so2: Number(row?.so2_mean || row?.so2),
+        no2: Number(row?.no2_mean || row?.no2),
+        co: Number(row?.co_mean || row?.co),
+        o3: Number(row?.o3_mean || row?.o3),
+      };
+      const info = calculateAQI(agg);
+      aqi = info.aqi;
+      primaryPollutant = info.primaryPollutant;
+    }
+
+    if (!Number.isFinite(aqi)) continue;
+
+    if (!groups.has(key)) {
+      groups.set(key, {
+        sumAQI: 0,
+        count: 0,
+        primaryCounts: new Map(),
+      });
+    }
+    const g = groups.get(key);
+    g.sumAQI += aqi;
+    g.count += 1;
+    if (primaryPollutant) {
+      g.primaryCounts.set(primaryPollutant, (g.primaryCounts.get(primaryPollutant) || 0) + 1);
+    }
+  }
+
+  const items = [];
+  for (const [name, g] of groups.entries()) {
+    const avg = g.count ? g.sumAQI / g.count : 0;
+    let primary = null;
+    let best = -Infinity;
+    for (const [p, c] of g.primaryCounts.entries()) {
+      if (c > best) {
+        best = c;
+        primary = p;
+      }
+    }
+    items.push({ name, aqi: Number(avg.toFixed(1)), primaryPollutant: primary });
+  }
+
+  return items.sort((a, b) => b.aqi - a.aqi).slice(0, topN);
+}
+
+/**
+ * 计算相关系数矩阵
+ * @param {Array} rows 数据行 array of objects
+ * @param {Array} fields 参与计算的字段列表
+ * @returns {Array} 矩阵数据 [[x, y, value], ...]
+ */
+export function computeCorrelationMatrix(rows, fields = ["pm25", "pm10", "so2", "no2", "co", "o3", "temp", "rh", "psfc", "wind"]) {
+  if (!rows || rows.length === 0) return [];
+
+  const matrix = [];
+
+  // Helper to calculate correlation
+  const correlation = (x, y) => {
+    const n = x.length;
+    let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0, sumY2 = 0;
+
+    for (let i = 0; i < n; i++) {
+      sumX += x[i];
+      sumY += y[i];
+      sumXY += x[i] * y[i];
+      sumX2 += x[i] * x[i];
+      sumY2 += y[i] * y[i];
+    }
+
+    const numerator = (n * sumXY) - (sumX * sumY);
+    const denominator = Math.sqrt(((n * sumX2) - (sumX * sumX)) * ((n * sumY2) - (sumY * sumY)));
+
+    return denominator === 0 ? 0 : numerator / denominator;
+  };
+
+  // Extract vectors
+  const vectors = {};
+  for (const field of fields) {
+    vectors[field] = [];
+  }
+
+  for (const row of rows) {
+    for (const field of fields) {
+      let val = Number(row[field]);
+      // Fallback to _mean if regular field is missing
+      if (Number.isNaN(val)) {
+        val = Number(row[`${field}_mean`]);
+      }
+      if (Number.isFinite(val)) {
+        vectors[field].push(val);
+      } else {
+        vectors[field].push(0);
+      }
+    }
+  }
+
+  // Calculate matrix
+  for (let i = 0; i < fields.length; i++) {
+    for (let j = 0; j < fields.length; j++) {
+      const f1 = fields[i];
+      const f2 = fields[j];
+      const val = correlation(vectors[f1], vectors[f2]);
+      matrix.push([i, j, Number(val.toFixed(2))]);
+    }
+  }
+
+  return matrix;
+}
+
+

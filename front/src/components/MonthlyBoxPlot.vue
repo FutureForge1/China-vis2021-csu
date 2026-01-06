@@ -1,7 +1,7 @@
 <template>
   <div class="monthly-boxplot">
     <div class="chart-header">
-      <h3>{{ title }}</h3>
+      <h3>{{ title === '月度箱线图' ? 'MONTHLY BOXPLOT' : title }}</h3>
       <div class="metric-info">
         <span class="unit">{{ getUnit(metric) }}</span>
       </div>
@@ -11,8 +11,8 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import * as echarts from 'echarts';
+import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 
 const props = defineProps({
   data: {
@@ -25,7 +25,7 @@ const props = defineProps({
   },
   title: {
     type: String,
-    default: '月度箱线图'
+    default: 'MONTHLY BOXPLOT'
   }
 });
 
@@ -68,8 +68,8 @@ const calculateBoxPlotData = (values) => {
 
 // 准备图表数据
 const prepareChartData = () => {
-  const months = ['1月', '2月', '3月', '4月', '5月', '6月',
-                 '7月', '8月', '9月', '10月', '11月', '12月'];
+  const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
+                 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 
   // 按月份分组数据
   const monthlyValues = Array.from({ length: 12 }, () => []);
@@ -129,6 +129,7 @@ const updateChart = () => {
   const { months, boxData, outliers } = prepareChartData();
 
   const option = {
+    backgroundColor: 'transparent',
     title: {
       show: false
     },
@@ -137,20 +138,27 @@ const updateChart = () => {
       axisPointer: {
         type: 'shadow'
       },
+      backgroundColor: "rgba(255,255,255,0.95)",
+      borderColor: "#FFE600",
+      borderWidth: 1,
+      textStyle: {
+        color: "#0a0a0a",
+        fontFamily: "JetBrains Mono",
+        fontSize: 12
+      },
       formatter: (params) => {
         if (params.componentType === 'boxplot') {
           const data = params.data;
           const month = months[params.dataIndex];
-          return `
-            ${month}<br/>
-            最大值: ${data[4].toFixed(1)}<br/>
-            上四分位: ${data[3].toFixed(1)}<br/>
-            中位数: ${data[2].toFixed(1)}<br/>
-            下四分位: ${data[1].toFixed(1)}<br/>
-            最小值: ${data[0].toFixed(1)}
-          `;
+          return `<div style="border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-bottom: 4px; color: #FFE600; font-weight: bold;">${month}</div>
+                  <div style="display: flex; justify-content: space-between; gap: 12px;"><span>MAX:</span><span style="font-weight: bold; color: #0a0a0a;">${data[5].toFixed(1)}</span></div>
+                  <div style="display: flex; justify-content: space-between; gap: 12px;"><span>Q3:</span><span style="font-weight: bold; color: #0a0a0a;">${data[4].toFixed(1)}</span></div>
+                  <div style="display: flex; justify-content: space-between; gap: 12px;"><span>MEDIAN:</span><span style="font-weight: bold; color: #0a0a0a;">${data[3].toFixed(1)}</span></div>
+                  <div style="display: flex; justify-content: space-between; gap: 12px;"><span>Q1:</span><span style="font-weight: bold; color: #0a0a0a;">${data[2].toFixed(1)}</span></div>
+                  <div style="display: flex; justify-content: space-between; gap: 12px;"><span>MIN:</span><span style="font-weight: bold; color: #0a0a0a;">${data[1].toFixed(1)}</span></div>`;
         } else if (params.componentType === 'scatter') {
-          return `${months[params.data[0]]} 异常值: ${params.data[1].toFixed(1)}`;
+          return `<div style="border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-bottom: 4px; color: #FFE600; font-weight: bold;">${months[params.data[0]]}</div>
+                  <div style="display: flex; justify-content: space-between; gap: 12px;"><span>OUTLIER:</span><span style="font-weight: bold; color: #0a0a0a;">${params.data[1].toFixed(1)}</span></div>`;
         }
         return params.name;
       }
@@ -166,48 +174,72 @@ const updateChart = () => {
       type: 'category',
       data: months,
       axisLabel: {
-        rotate: 45,
-        fontSize: 11
+        rotate: 0,
+        fontSize: 10,
+        color: '#666',
+        fontFamily: "JetBrains Mono"
+      },
+      axisLine: {
+        lineStyle: {
+          color: '#ddd'
+        }
+      },
+      axisTick: {
+        show: false
       }
     },
     yAxis: {
       type: 'value',
       name: getUnit(props.metric),
       nameTextStyle: {
-        fontSize: 12
+        fontSize: 10,
+        color: '#666',
+        fontFamily: "JetBrains Mono"
+      },
+      axisLabel: {
+        fontSize: 10,
+        color: '#666',
+        fontFamily: "JetBrains Mono"
+      },
+      splitLine: {
+        lineStyle: {
+          color: '#ddd',
+          type: 'dashed'
+        }
       }
     },
     series: [
       {
-        name: '箱线图',
+        name: 'boxplot',
         type: 'boxplot',
         data: boxData,
         itemStyle: {
-          color: '#2f7e57',
-          borderColor: '#1f5a42',
-          borderWidth: 1.5
-        },
-        emphasis: {
-          itemStyle: {
-            color: '#8bbf5f',
-            borderColor: '#2f7e57',
-            borderWidth: 2
-          }
-        }
-      },
-      {
-        name: '异常值',
-        type: 'scatter',
-        data: outliers,
-        symbolSize: 6,
-        itemStyle: {
-          color: '#eab308',
-          borderColor: '#d97706',
+          color: 'transparent',
+          borderColor: '#FFE600',
           borderWidth: 1
         },
         emphasis: {
           itemStyle: {
-            color: '#f59e0b'
+            borderWidth: 2,
+            shadowBlur: 10,
+            shadowColor: 'rgba(255, 230, 0, 0.5)'
+          }
+        }
+      },
+      {
+        name: 'outlier',
+        type: 'scatter',
+        data: outliers,
+        symbolSize: 4,
+        itemStyle: {
+          color: '#FFE600',
+          opacity: 0.6,
+          borderColor: '#FFE600',
+          borderWidth: 1
+        },
+        emphasis: {
+          itemStyle: {
+            color: '#0a0a0a'
           }
         }
       }
@@ -250,22 +282,25 @@ onUnmounted(() => {
   height: 100%;
   display: flex;
   flex-direction: column;
+  gap: 6px;
 }
 
 .chart-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid rgba(18, 24, 40, 0.08);
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 4px;
 }
 
-.chart-header h3 {
+h3 {
   margin: 0;
   font-size: 14px;
-  font-weight: 600;
-  color: #0f172a;
+  font-weight: bold;
+  color: #0a0a0a;
+  font-family: "Oswald", sans-serif;
+  letter-spacing: 1px;
+  text-transform: uppercase;
 }
 
 .metric-info {
@@ -275,16 +310,14 @@ onUnmounted(() => {
 }
 
 .unit {
-  font-size: 12px;
-  color: var(--muted);
-  background: rgba(47, 126, 87, 0.08);
-  padding: 2px 6px;
-  border-radius: 4px;
-  border: 1px solid rgba(47, 126, 87, 0.2);
+  font-size: 10px;
+  color: #666;
+  font-family: "JetBrains Mono", monospace;
 }
 
 .chart-container {
   flex: 1;
-  min-height: 250px;
+  min-height: 0;
+  width: 100%;
 }
 </style>
