@@ -128,6 +128,7 @@ h3 {
 }
 .chart {
   flex: 1;
-  min-height: 0;
+  min-height: 250px;
+  width: 100%;
 }
 </style>

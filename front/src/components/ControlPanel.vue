@@ -87,7 +87,7 @@ const weatherList = computed(() => [
 // 【新增】判断是否显示重置按钮
 const showReset = computed(() => {
   // Show reset if region is not default
-  return props.region && props.region !== 'NATIONWIDE' && props.region !== 'NATIONAL MEAN';
+  return props.region && props.region !== 'NATIONWIDE' && props.region !== 'NATIONAL MEAN' && props.region !== '全国';
 });
 
 function aggregateStats(rows) {
@@ -105,23 +105,28 @@ function aggregateStats(rows) {
       aqiCount += 1;
     }
     
-    // 兼容月度数据字段 (u_mean, v_mean)
-    const u = Number(row?.u ?? row?.u_mean);
-    const v = Number(row?.v ?? row?.v_mean);
+    // 兼容月度/年度数据字段 (u_mean/u_yearly_mean, v_mean/v_yearly_mean)
+    const u = Number(row?.u ?? row?.u_mean ?? row?.u_yearly_mean);
+    const v = Number(row?.v ?? row?.v_mean ?? row?.v_yearly_mean);
     const wind = Number.isFinite(u) && Number.isFinite(v) ? Math.sqrt(u * u + v * v) : null;
     if (Number.isFinite(wind)) sums.wind += wind;
     
     for (const k of keys) {
       if (k === "wind") continue;
-      // 兼容月度数据字段 (例如 pm25_mean)
-      const val = Number(row?.[k] ?? row?.[`${k}_mean`]);
-      if (Number.isFinite(val)) {
-        sums[k] += val;
+      // 兼容月度/年度数据字段 (例如 pm25_mean, pm25_yearly_mean)
+      const val = Number(row?.[k] ?? row?.[`${k}_mean`] ?? row?.[`${k}_yearly_mean`]);
+      // Also check if val is 0, sometimes explicit 0 is valid, but missing data might be null.
+      // Number(null) is 0, which is bad for pollution averages.
+      // Use explicit check
+      const rawVal = row?.[k] ?? row?.[`${k}_mean`] ?? row?.[`${k}_yearly_mean`];
+      if (rawVal !== undefined && rawVal !== null && !Number.isNaN(Number(rawVal))) {
+        sums[k] += Number(rawVal);
       }
     }
   }
   const out = {};
   for (const k of keys) {
+    // Avoid division by zero
     out[k] = n ? Number((sums[k] / n).toFixed(k === "wind" ? 2 : 1)) : null;
   }
   out.aqi = aqiCount ? Number((aqiSum / aqiCount).toFixed(0)) : null;

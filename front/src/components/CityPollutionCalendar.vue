@@ -1,22 +1,27 @@
 <template>
-  <div class="city-calendar-wrap">
-    <div class="section-heading">
+  <div class="city-calendar-wrap" :class="{ 'full-width': autoLoad }">
+    <div class="section-heading" v-if="!autoLoad">
       <div class="section-badge">CITY CALENDAR</div>
       <div class="section-meta">YEARLY AQI HEATMAP</div>
     </div>
+    
+    <!-- Title for embedded mode -->
+    <div class="embedded-header" v-if="autoLoad">
+      <h4>YEARLY AQI HEATMAP · {{ displayTitle }}</h4>
+    </div>
 
-    <!-- Selectors -->
-    <div class="selectors">
+    <!-- Selectors (Hidden in auto-load mode) -->
+    <div class="selectors" v-if="!autoLoad">
       <div class="selector-group">
         <label>YEAR:</label>
-        <select v-model="selectedYear" @change="onYearChange">
+        <select v-model="internalSelectedYear" @change="onYearChange">
           <option v-for="y in availableYears" :key="y" :value="y">{{ y }}</option>
         </select>
       </div>
       
       <div class="selector-group">
         <label>PROVINCE:</label>
-        <select v-model="selectedProvince" @change="onProvinceChange">
+        <select v-model="internalSelectedProvince" @change="onProvinceChange">
           <option value="">SELECT PROVINCE</option>
           <option v-for="p in provinces" :key="p" :value="p">{{ p }}</option>
         </select>
@@ -24,7 +29,7 @@
       
       <div class="selector-group">
         <label>CITY:</label>
-        <select v-model="selectedCity" @change="onCityChange" :disabled="!selectedProvince">
+        <select v-model="internalSelectedCity" @change="onCityChange" :disabled="!internalSelectedProvince">
           <option value="">SELECT CITY</option>
           <option v-for="c in cities" :key="c" :value="c">{{ c }}</option>
         </select>
@@ -44,7 +49,7 @@
 
     <!-- Empty State -->
     <div v-else class="empty-state">
-      <p>SELECT YEAR, PROVINCE AND CITY TO VIEW CALENDAR</p>
+      <p>{{ emptyMessage }}</p>
     </div>
 
     <!-- Legend -->
@@ -61,34 +66,54 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import {
     computeCityYearCalendar,
     getCitiesByProvince,
     loadAvailableYears,
 } from "../utils/dataLoader";
 
+const props = defineProps({
+  year: { type: String, default: "" },
+  province: { type: String, default: "" },
+  city: { type: String, default: "" },
+  autoLoad: { type: Boolean, default: false }
+});
+
 // State
 const availableYears = ref([]);
 const provinceCityMap = ref({});
-const selectedYear = ref("");
-const selectedProvince = ref("");
-const selectedCity = ref("");
+const internalSelectedYear = ref("");
+const internalSelectedProvince = ref("");
+const internalSelectedCity = ref("");
 const calendarData = ref([]);
 const loading = ref(false);
+
+const displayTitle = computed(() => {
+  if (props.city) return props.city;
+  if (props.province) return props.province;
+  return "NATIONWIDE (Select a region)";
+});
+
+const emptyMessage = computed(() => {
+  if (props.autoLoad) return "SELECT A CITY OR PROVINCE TO VIEW CALENDAR";
+  return "SELECT YEAR, PROVINCE AND CITY TO VIEW CALENDAR";
+});
 
 // Computed
 const provinces = computed(() => Object.keys(provinceCityMap.value).sort());
 const cities = computed(() => {
-  if (!selectedProvince.value) return [];
-  return provinceCityMap.value[selectedProvince.value] || [];
+  if (!internalSelectedProvince.value) return [];
+  return provinceCityMap.value[internalSelectedProvince.value] || [];
 });
 
 // Chart Option
 const chartOption = computed(() => {
-  if (!calendarData.value.length || !selectedYear.value) return {};
+  if (!calendarData.value.length) return {};
+  
+  const y = props.autoLoad ? props.year : internalSelectedYear.value; 
+  if (!y) return {};
 
-  const year = selectedYear.value;
   const heatmapData = calendarData.value.map((d) => [d.date, d.aqi]);
 
   return {
@@ -134,88 +159,126 @@ const chartOption = computed(() => {
         color: ["#22c55e", "#a3e635", "#facc15", "#f97316", "#ef4444", "#7f1d1d"],
       },
       textStyle: { color: "#666", fontFamily: 'JetBrains Mono' },
+      show: false 
     },
     calendar: {
-      top: 40,
+      top: 30,
       left: 30,
       right: 30,
-      cellSize: ["auto", 16],
-      range: year,
+      cellSize: ["auto", 13],
+      range: y,
       itemStyle: {
-        borderWidth: 1,
+        borderWidth: 0.5,
         borderColor: "#1a1a1a",
         color: "transparent"
       },
       splitLine: {
         lineStyle: { color: "#ddd", width: 1 },
       },
-      yearLabel: { show: true, color: "#0a0a0a", fontFamily: 'Oswald' },
-      monthLabel: { color: "#666", fontFamily: 'JetBrains Mono', nameMap: 'en' },
-      dayLabel: { 
-        color: "#666", 
-        firstDay: 1,
-        fontFamily: 'JetBrains Mono',
-        nameMap: 'en'
-      },
+      yearLabel: { show: false },
+      monthLabel: { nameMap: "en", color: "#666", fontSize: 10 },
+      dayLabel: { firstDay: 1, nameMap: "en", color: "#666", fontSize: 10 },
     },
     series: [
       {
         type: "heatmap",
         coordinateSystem: "calendar",
         data: heatmapData,
+        itemStyle: {
+          borderRadius: 2
+        }
       },
     ],
   };
 });
 
-// Handlers
-async function onYearChange() {
-  selectedProvince.value = "";
-  selectedCity.value = "";
-  calendarData.value = [];
-  
-  if (selectedYear.value) {
-    loading.value = true;
-    try {
-      provinceCityMap.value = await getCitiesByProvince(selectedYear.value);
-    } catch (e) {
-      console.error("Failed to load cities:", e);
-    }
+async function loadData() {
+  const y = props.autoLoad ? props.year : internalSelectedYear.value;
+  // If city is provided, use it. If not, if province is provided, use it.
+  const target = props.autoLoad 
+      ? (props.city || props.province) 
+      : (internalSelectedCity.value || internalSelectedProvince.value);
+
+  if (!y || (!target && !props.autoLoad)) {
+    calendarData.value = [];
+    return;
+  }
+
+  loading.value = true;
+  try {
+     calendarData.value = await computeCityYearCalendar(y, target);
+  } catch (e) {
+    console.error(e);
+    calendarData.value = [];
+  } finally {
     loading.value = false;
   }
 }
 
+// Watchers for auto-load
+watch(
+  () => [props.year, props.province, props.city],
+  () => {
+    if (props.autoLoad) {
+      loadData();
+    }
+  },
+  { immediate: true }
+);
+
+// Standalone mode handlers
+async function loadStandaloneData() {
+  const year = internalSelectedYear.value;
+  if (!year) return;
+
+  const target = internalSelectedCity.value || internalSelectedProvince.value || "";
+  
+  loading.value = true;
+  try {
+     calendarData.value = await computeCityYearCalendar(year, target);
+  } catch (e) {
+    console.error(e);
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function onYearChange() {
+  internalSelectedCity.value = "";
+  internalSelectedProvince.value = "";
+  
+  if (internalSelectedYear.value) {
+     try {
+       provinceCityMap.value = await getCitiesByProvince(internalSelectedYear.value);
+     } catch (e) { console.error(e); }
+     
+     // Default load Nationwide data
+     await loadStandaloneData();
+  } else {
+     calendarData.value = [];
+  }
+}
+
 function onProvinceChange() {
-  selectedCity.value = "";
-  calendarData.value = [];
+  internalSelectedCity.value = "";
+  loadStandaloneData();
 }
 
 async function onCityChange() {
-  if (!selectedYear.value || !selectedCity.value) return;
-
-  loading.value = true;
-  try {
-    calendarData.value = await computeCityYearCalendar(
-      selectedYear.value,
-      selectedCity.value
-    );
-  } catch (e) {
-    console.error("Failed to load calendar data:", e);
-    calendarData.value = [];
-  }
-  loading.value = false;
+  loadStandaloneData();
 }
 
-// Init
 onMounted(async () => {
-  try {
-    availableYears.value = await loadAvailableYears();
-    if (availableYears.value.length > 0) {
-      selectedYear.value = availableYears.value[0];
-      await onYearChange();
+  if (!props.autoLoad) {
+    try {
+      availableYears.value = await loadAvailableYears();
+      if (availableYears.value.length > 0) {
+        internalSelectedYear.value = availableYears.value[0];
+        await onYearChange();
+      }
+    } catch (e) {
+      console.error(e);
     }
-  } catch (e) {
-    console.error("Init failed:", e);
   }
 });
 </script>
@@ -224,7 +287,29 @@ onMounted(async () => {
 .city-calendar-wrap {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.95); /* Ensure background for standalone */
+  border: 1px solid #ddd;
+  padding: 10px;
+  height: 100%;
+}
+
+.city-calendar-wrap.full-width {
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 0;
+  gap: 5px;
+}
+
+.embedded-header h4 {
+  font-family: "Oswald", sans-serif;
+  color: #0a0a0a;
+  margin: 0 0 5px 0;
+  font-size: 14px;
+  text-transform: uppercase;
+  border-left: 3px solid #f97316;
+  padding-left: 8px;
 }
 
 .section-heading {
@@ -315,6 +400,8 @@ onMounted(async () => {
   border: 1px solid var(--c-border);
   padding: 10px;
   background: rgba(0, 0, 0, 0.2);
+  height: auto !important; /* Override global fixed height */
+  margin: 0 !important;    /* Remove global default margins */
 }
 
 .calendar-chart {
@@ -340,6 +427,7 @@ onMounted(async () => {
   gap: 15px;
   font-size: 10px;
   font-family: var(--font-mono);
+  margin-top: -5px; /* Pull closer to chart */
 }
 
 .legend-title {

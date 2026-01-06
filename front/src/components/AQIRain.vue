@@ -2,7 +2,7 @@
   <div class="wrap">
     <div class="heading">
       <h3>全国 AQI 等级晴雨图</h3>
-      <span class="sub">固定 1 月</span>
+      <span class="sub" v-if="subtitle">{{ subtitle }}</span>
     </div>
     <VChart :option="option" autoresize class="chart" />
   </div>
@@ -16,6 +16,10 @@ const props = defineProps({
     type: Object,
     default: () => ({ years: [], levels: [], data: [] }), // data: [levelIdx, yearIdx, count]
   },
+  subtitle: {
+    type: String,
+    default: ""
+  }
 });
 
 const option = computed(() => ({

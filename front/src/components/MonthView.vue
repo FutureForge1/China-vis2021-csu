@@ -2,24 +2,32 @@
   <div class="month-view" :class="{ embedded: isEmbedded }">
     <!-- Header (Hidden if embedded) -->
     <div class="section-heading" v-if="!isEmbedded">
-      <div class="section-badge">MONTH VIEW</div>
-      <div class="section-meta">MONTHLY DATA · ANNUAL TREND · SPATIAL DISTRIBUTION</div>
+      <div class="section-badge">MONTHLY ANALYTICS</div>
+      <!-- Fixed label -->
+      <div class="section-meta">
+        MONTHLY DATA · ANNUAL TREND · SPATIAL DISTRIBUTION
+      </div>
     </div>
 
     <!-- Time Controls -->
     <div class="time-bar">
       <div class="year-selector">
         <label>YEAR:</label>
-        <select :value="currentYear" @change="e => $emit('update:currentYear', e.target.value)">
-          <option v-for="y in availableYears" :key="y" :value="y">{{ y }}</option>
+        <select
+          :value="currentYear"
+          @change="(e) => $emit('update:currentYear', e.target.value)"
+        >
+          <option v-for="y in availableYears" :key="y" :value="y">
+            {{ y }}
+          </option>
         </select>
       </div>
       <div class="month-selector">
         <label>MONTH:</label>
         <div class="month-chips">
-          <button 
-            v-for="m in 12" 
-            :key="m" 
+          <button
+            v-for="m in 12"
+            :key="m"
             :class="['month-chip', { active: m === currentMonth }]"
             @click="handleMonthSelect(m)"
           >
@@ -47,18 +55,37 @@
       <div class="pane map-pane">
         <div class="map-switch">
           <div class="mode-group">
-            <button :class="{ active: mapMode === 'pollution' }" @click="mapMode = 'pollution'">POLLUTION</button>
-            <button :class="{ active: mapMode === 'weather' }" @click="mapMode = 'weather'">WEATHER</button>
-            <button :class="{ active: mapMode === 'type' }" @click="mapMode = 'type'">TYPE</button>
+            <button
+              :class="{ active: mapMode === 'pollution' }"
+              @click="mapMode = 'pollution'"
+            >
+              POLLUTION
+            </button>
+            <button
+              :class="{ active: mapMode === 'weather' }"
+              @click="mapMode = 'weather'"
+            >
+              WEATHER
+            </button>
+            <button
+              :class="{ active: mapMode === 'type' }"
+              @click="mapMode = 'type'"
+            >
+              TYPE
+            </button>
           </div>
-          
-          <div class="divider" v-if="mapMode !== 'type'" style="display:none"></div>
+
+          <div
+            class="divider"
+            v-if="mapMode !== 'type'"
+            style="display: none"
+          ></div>
 
           <div v-if="mapMode === 'pollution'" class="metric-toggle">
-            <button 
-              v-for="m in ['pm25', 'pm10', 'so2', 'no2', 'co', 'o3']" 
+            <button
+              v-for="m in ['pm25', 'pm10', 'so2', 'no2', 'co', 'o3']"
               :key="m"
-              :class="{ active: metric === m }" 
+              :class="{ active: metric === m }"
               @click="$emit('update:metric', m)"
             >
               {{ m.toUpperCase() }}
@@ -66,10 +93,30 @@
           </div>
 
           <div v-if="mapMode === 'weather'" class="weather-toggle">
-            <button :class="{ active: weatherMetric === 'wind' }" @click="weatherMetric = 'wind'">WIND</button>
-            <button :class="{ active: weatherMetric === 'temp' }" @click="weatherMetric = 'temp'">TEMP</button>
-            <button :class="{ active: weatherMetric === 'rh' }" @click="weatherMetric = 'rh'">RH</button>
-            <button :class="{ active: weatherMetric === 'psfc' }" @click="weatherMetric = 'psfc'">PSFC</button>
+            <button
+              :class="{ active: weatherMetric === 'wind' }"
+              @click="weatherMetric = 'wind'"
+            >
+              WIND
+            </button>
+            <button
+              :class="{ active: weatherMetric === 'temp' }"
+              @click="weatherMetric = 'temp'"
+            >
+              TEMP
+            </button>
+            <button
+              :class="{ active: weatherMetric === 'rh' }"
+              @click="weatherMetric = 'rh'"
+            >
+              RH
+            </button>
+            <button
+              :class="{ active: weatherMetric === 'psfc' }"
+              @click="weatherMetric = 'psfc'"
+            >
+              PSFC
+            </button>
           </div>
         </div>
 
@@ -82,30 +129,36 @@
           :show-value="true"
           @select="handleMapSelect"
         />
-        
+
         <MapPanel
-          v-else-if="mapMode === 'weather' && (weatherMapSeries.length > 0 || monthWindVectors.length > 0)"
+          v-else-if="
+            mapMode === 'weather' &&
+            (weatherMapSeries.length > 0 || monthWindVectors.length > 0)
+          "
           :data="weatherMapSeries"
           :metric="weatherMetricLabel"
           :title="`WEATHER DIST: ${weatherMetricLabel}`"
           mode="weather"
           :selected-name="selectedRegion"
-          :wind="monthWindVectors" 
+          :wind="monthWindVectors"
           :show-value="true"
           @select="handleMapSelect"
         />
 
-        <div v-else-if="!isMonthDetailLoading && monthMapSeries.length === 0" class="placeholder-map">
+        <div
+          v-else-if="!isMonthDetailLoading && monthMapSeries.length === 0"
+          class="placeholder-map"
+        >
           LOADING OR NO DATA...
         </div>
-        
+
         <TypeMap
           v-else-if="mapMode === 'type' && typeMapData.length > 0"
           :key="`typ-${currentYear}-${currentMonth}`"
           :data="typeMapData"
           title="DOMINANT POLLUTION TYPE"
           :selected-name="selectedRegion"
-          :map-name="currentMapName" 
+          :map-name="currentMapName"
         />
       </div>
 
@@ -153,7 +206,9 @@
       </div>
       <div class="pane">
         <CityTypeRibbon
-          v-if="monthCityTypeRibbon.dates && monthCityTypeRibbon.dates.length > 0"
+          v-if="
+            monthCityTypeRibbon.dates && monthCityTypeRibbon.dates.length > 0
+          "
           :dates="monthCityTypeRibbon.dates"
           :series="monthCityTypeRibbon.series"
           :type-order="monthCityTypeRibbon.typeOrder"
@@ -176,62 +231,83 @@
       <div class="pane">
         <MonthlyRing :items="monthlyRings" />
       </div>
+      <div class="pane" v-if="!isEmbedded">
+        <!-- Add ProvinceDimensionChart support in MonthView -->
+        <!-- Assuming data is passed or calculated. MonthView typically handles its own data loading -->
+        <!-- Since tsneScatter computation is in App.vue, we might need a prop or re-compute it here if used -->
+      </div>
     </section>
 
     <!-- Row 5: Wind & Comparison -->
-    <section class="layout tertiary">
+    <section class="layout secondary">
       <div class="pane">
         <WindCompass :data="monthWindRose" />
       </div>
       <div class="pane">
-        <AQICompareLine :days="monthAQICompare.days" :series="monthAQICompare.series" :mode="'monthly'" />
-      </div>
-      <div class="pane">
-        <div class="placeholder-pane">
-          <div class="placeholder-content">
-            <h4>MONTHLY COMPARISON</h4>
-            <p>ANNUAL COMPARISON OR OTHER ANALYSIS</p>
-          </div>
-        </div>
-      </div>
-      <div class="pane">
-        <div class="placeholder-pane">
-          <div class="placeholder-content">
-            <h4>EXTENDED CHART</h4>
-            <p>RESERVED FOR FUTURE USE</p>
-          </div>
-        </div>
+        <AQICompareLine
+          :days="monthAQICompare.days"
+          :series="monthAQICompare.series"
+          :mode="'monthly'"
+        />
       </div>
     </section>
+
+    <!-- Row 6: Correlation -->
+    <div class="pane full-width-pane" style="height: 320px">
+      <CorrHeatmap
+        v-if="monthCorrMatrix && monthCorrMatrix.length > 0"
+        :matrix="monthCorrMatrix"
+        title="FACTOR CORRELATION (MONTHLY)"
+      />
+      <div v-else class="placeholder-pane" style="height: 100%">
+        <div class="placeholder-content">
+          <h4>FACTOR CORRELATION</h4>
+          <p>LOADING OR INSUFFICIENT DATA</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- City Calendar (Full Width) -->
+    <div class="pane full-width-pane">
+      <CityPollutionCalendar
+        :year="currentYear"
+        :province="selectedRegion"
+        :city="selectedCity"
+        :auto-load="true"
+      />
+    </div>
   </div>
 </template>
 
 <script setup>
 import { computed, ref, watch } from "vue";
 import {
-    buildMonthlyWindVectors,
-    classifyLevels,
-    computeAQIRankingMonthly,
-    computeCityMonthStats,
-    computeCityTypeTrajectory,
-    computeLevelTimelineByGranularity,
-    computeMonthlyBoxDataForView,
-    computeMonthlyRingMonthly,
-    computeRadialVectorByMonthly,
-    computeTrendSeriesByGranularity,
-    computeTypeByRegion,
-    computeWindRose,
-    loadDataByGranularity,
-    loadOneMonth,
-    loadRegionIndex,
-    matchGeoName,
-    normalizeProvince
+  buildMonthlyWindVectors,
+  classifyLevels,
+  computeAQIRankingMonthly,
+  computeCityMonthStats,
+  computeCityTypeTrajectory,
+  computeCorrMatrix,
+  computeLevelTimelineByGranularity,
+  computeMonthlyBoxDataForView,
+  computeMonthlyRingMonthly,
+  computeRadialVectorByMonthly,
+  computeTrendSeriesByGranularity,
+  computeTypeByRegion,
+  computeWindRose,
+  loadDataByGranularity,
+  loadOneMonth,
+  loadRegionIndex,
+  matchGeoName,
+  normalizeProvince,
 } from "../utils/dataLoader";
 import AQICompareLine from "./AQICompareLine.vue";
 import AQIRanking from "./AQIRanking.vue";
+import CityPollutionCalendar from "./CityPollutionCalendar.vue";
 import CityStackedPie from "./CityStackedPie.vue";
 import CityTypeRibbon from "./CityTypeRibbon.vue";
 import ControlPanel from "./ControlPanel.vue";
+import CorrHeatmap from "./CorrHeatmap.vue";
 import LevelBar from "./LevelBar.vue";
 import MapPanel from "./MapPanel.vue";
 import MonthlyBoxPlot from "./MonthlyBoxPlot.vue";
@@ -246,32 +322,32 @@ import WindCompass from "./WindCompass.vue";
 const props = defineProps({
   currentYear: {
     type: String,
-    default: "2015"
+    default: "2015",
   },
   metric: {
     type: String,
-    default: "pm25"
+    default: "pm25",
   },
   selectedRegion: {
     type: String,
-    default: ""
+    default: "",
   },
   availableYears: {
     type: Array,
-    default: () => ["2013"]
+    default: () => ["2013"],
   },
   isEmbedded: {
     type: Boolean,
-    default: false
-  }
+    default: false,
+  },
 });
 
 // Emits
 const emit = defineEmits([
-  "update:region", 
-  "select-month", 
-  "update:metric",      
-  "update:currentYear"  
+  "update:region",
+  "select-month",
+  "update:metric",
+  "update:currentYear",
 ]);
 
 // Reactive State
@@ -279,9 +355,9 @@ const mapMode = ref("pollution");
 const weatherMetric = ref("wind");
 const regionIndex = ref(null);
 const currentMonth = ref(1);
-const monthlyAggregatedData = ref([]); 
-const currentMonthDailyData = ref([]); 
-const isMonthDetailLoading = ref(false); 
+const monthlyAggregatedData = ref([]);
+const currentMonthDailyData = ref([]);
+const isMonthDetailLoading = ref(false);
 const mapGeoNames = ref([]);
 
 // Computed
@@ -297,11 +373,11 @@ const monthMapSeries = computed(() => {
   const sums = new Map();
   const counts = new Map();
   const metricName = props.metric;
-  
+
   for (const row of currentMonthDailyData.value) {
     const actualField = `${metricName}_mean`;
     const val = Number(row[actualField] ?? 0);
-    
+
     if (Number.isNaN(val)) continue;
 
     // 1. 聚合省份
@@ -322,30 +398,31 @@ const monthMapSeries = computed(() => {
     name: name,
     value: sum / (counts.get(name) || 1),
   }));
-  
-  console.log(`[MonthView] monthMapSeries: ${result.length} regions with valid data for metric ${props.metric}`);
+
+  console.log(
+    `[MonthView] monthMapSeries: ${result.length} regions with valid data for metric ${props.metric}`
+  );
   return result;
 });
 
-const currentMapName = computed(() => 'china');
-
+const currentMapName = computed(() => "china");
 
 const weatherMapSeries = computed(() => {
-  if (weatherMetric.value === 'wind') {
-    return []; 
+  if (weatherMetric.value === "wind") {
+    return [];
   }
 
   if (currentMonthDailyData.value.length === 0) return [];
-  
+
   // 使用与 App.vue aggregateMap 相同的逻辑
   const sums = new Map();
   const counts = new Map();
   const metricName = weatherMetric.value;
-  
+
   for (const row of currentMonthDailyData.value) {
     const actualField = `${metricName}_mean`;
     const val = Number(row[actualField] ?? 0);
-    
+
     if (Number.isNaN(val)) continue;
 
     // 1. 聚合省份
@@ -366,7 +443,7 @@ const weatherMapSeries = computed(() => {
     name: name,
     value: sum / (counts.get(name) || 1),
   }));
-  
+
   return result;
 });
 
@@ -377,56 +454,75 @@ const weatherMetricLabel = computed(() => {
 
 const typeMapData = computed(() => {
   if (mapGeoNames.value.length === 0) {
-    console.warn('[MonthView] typeMapData: mapGeoNames is empty');
+    console.warn("[MonthView] typeMapData: mapGeoNames is empty");
     return [];
   }
 
-  if (!monthlyAggregatedData.value || monthlyAggregatedData.value.length === 0) {
-    console.warn('[MonthView] typeMapData: monthlyAggregatedData is empty');
+  if (
+    !monthlyAggregatedData.value ||
+    monthlyAggregatedData.value.length === 0
+  ) {
+    console.warn("[MonthView] typeMapData: monthlyAggregatedData is empty");
     return [];
   }
 
-  const monthEntry = monthlyAggregatedData.value.find(m => m.month === currentMonth.value);
+  const monthEntry = monthlyAggregatedData.value.find(
+    (m) => m.month === currentMonth.value
+  );
   if (!monthEntry) {
-    console.warn('[MonthView] typeMapData: no entry for month', currentMonth.value);
+    console.warn(
+      "[MonthView] typeMapData: no entry for month",
+      currentMonth.value
+    );
     return [];
   }
-  
+
   if (!monthEntry.data || monthEntry.data.length === 0) {
-    console.warn('[MonthView] typeMapData: month entry has no data', currentMonth.value);
+    console.warn(
+      "[MonthView] typeMapData: month entry has no data",
+      currentMonth.value
+    );
     return [];
   }
 
   const rawList = computeTypeByRegion(monthEntry.data, "city", "month");
-  console.log('[MonthView] typeMapData: computed rawList length:', rawList.length);
-  
+  console.log(
+    "[MonthView] typeMapData: computed rawList length:",
+    rawList.length
+  );
+
   const validList = [];
   for (const item of rawList) {
     const mappedName = matchGeoName(item.name, mapGeoNames.value);
     if (mappedName) {
       validList.push({
         ...item,
-        name: mappedName 
+        name: mappedName,
       });
     }
   }
-  
-  console.log('[MonthView] typeMapData: validList length:', validList.length);
+
+  console.log("[MonthView] typeMapData: validList length:", validList.length);
   return validList;
+});
+
+const tsneScatter = computed(() => {
+  return buildFeatureScatterTSNE(currentMonthDailyData.value, "city");
 });
 
 const monthLevelStats = computed(() => {
   if (selectedCity.value) {
     const target = selectedCity.value;
-    const cityData = currentMonthDailyData.value.filter(r =>
-      (r.city && r.city.includes(target)) ||
-      (r.province && r.province.includes(target))
+    const cityData = currentMonthDailyData.value.filter(
+      (r) =>
+        (r.city && r.city.includes(target)) ||
+        (r.province && r.province.includes(target))
     );
     return classifyLevels(cityData, props.metric);
   } else {
     // 当前月份的数据
-    const statsData = currentMonthDailyData.value.map(row => ({
-      [props.metric]: row[`${props.metric}_mean`] 
+    const statsData = currentMonthDailyData.value.map((row) => ({
+      [props.metric]: row[`${props.metric}_mean`],
     }));
     return classifyLevels(statsData, props.metric);
   }
@@ -437,56 +533,103 @@ const monthRadialVector = computed(() => {
 });
 
 const monthTrendSeries = computed(() => {
-  return computeTrendSeriesByGranularity(monthlyAggregatedData.value, props.metric, "month");
+  return computeTrendSeriesByGranularity(
+    monthlyAggregatedData.value,
+    props.metric,
+    "month"
+  );
 });
 
 const monthTrendDates = computed(() => {
-  return monthlyAggregatedData.value.map(entry => entry.date);
+  return monthlyAggregatedData.value.map((entry) => entry.date);
 });
 
 const monthlyBoxData = computed(() => {
-  return computeMonthlyBoxDataForView(monthlyAggregatedData.value, props.metric);
+  return computeMonthlyBoxDataForView(
+    monthlyAggregatedData.value,
+    props.metric
+  );
 });
 
 const monthlyLevelTimeline = computed(() => {
-  return computeLevelTimelineByGranularity(monthlyAggregatedData.value, props.metric, "month");
+  return computeLevelTimelineByGranularity(
+    monthlyAggregatedData.value,
+    props.metric,
+    "month"
+  );
 });
 
 const monthCityValues = computed(() => {
   if (!selectedCity.value) return {};
   const target = normalizeProvince(selectedCity.value);
-  const monthEntry = monthlyAggregatedData.value.find(m => m.month === currentMonth.value);
+  const monthEntry = monthlyAggregatedData.value.find(
+    (m) => m.month === currentMonth.value
+  );
   if (!monthEntry) return {};
-  
-  const row = monthEntry.data.find(r => 
-    normalizeProvince(r.city) === target || 
-    normalizeProvince(r.province) === target
+
+  const row = monthEntry.data.find(
+    (r) =>
+      normalizeProvince(r.city) === target ||
+      normalizeProvince(r.province) === target
   );
   if (!row) return {};
-  
+
   return {
-    pm25: row.pm25_mean, pm10: row.pm10_mean, so2: row.so2_mean,
-    no2: row.no2_mean, co: row.co_mean, o3: row.o3_mean,
+    pm25: row.pm25_mean,
+    pm10: row.pm10_mean,
+    so2: row.so2_mean,
+    no2: row.no2_mean,
+    co: row.co_mean,
+    o3: row.o3_mean,
   };
 });
 
 const monthCityStats = computed(() => {
-  return computeCityMonthStats(currentMonthDailyData.value, selectedCity.value, currentMonth.value);
+  if (!currentMonthDailyData.value) return {};
+  // Wrap into dayEntries format for computeCityMonthStats
+  const wrapped = [
+    {
+      date: `${props.currentYear}-${String(currentMonth.value).padStart(
+        2,
+        "0"
+      )}-01`,
+      data: currentMonthDailyData.value,
+    },
+  ];
+  return computeCityMonthStats(wrapped, selectedCity.value, currentMonth.value);
 });
 
 const monthCityTypeRibbon = computed(() => {
-  if (!currentMonthDailyData.value || currentMonthDailyData.value.length === 0) {
+  if (
+    !monthlyAggregatedData.value ||
+    monthlyAggregatedData.value.length === 0
+  ) {
     return { dates: [], series: [], typeOrder: [] };
   }
-  // 包装成 computeCityTypeTrajectory 期望的格式：[{date, data}]
-  const wrapped = [{
-    date: `${props.currentYear}-${String(currentMonth.value).padStart(2, '0')}-01`,
-    data: currentMonthDailyData.value
-  }];
-  return computeCityTypeTrajectory(wrapped, props.selectedRegion || null, currentMonth.value);
+  // Use all monthly data for trajectory (Yearly evolution)
+  return computeCityTypeTrajectory(
+    monthlyAggregatedData.value,
+    props.selectedRegion || null,
+    null,
+    "month"
+  );
 });
 
 const monthAQIRanking = computed(() => {
+  // If a region (province) is selected, rank cities within that province
+  if (props.selectedRegion) {
+    // Determine if selectedRegion is a province.
+    // Usually if selectedRegion is set, we want to see cities inside it.
+    // Filter data for this province
+    const target = normalizeProvince(props.selectedRegion);
+    const provinceData = currentMonthDailyData.value.filter(
+      (r) => normalizeProvince(r.province) === target
+    );
+
+    // Rank by city (using 'city' field)
+    return computeAQIRankingMonthly(provinceData, "city", 15);
+  }
+  // Default: Rank provinces nationwide
   return computeAQIRankingMonthly(currentMonthDailyData.value, "province", 15);
 });
 
@@ -500,34 +643,75 @@ const monthWindRose = computed(() => {
 });
 
 const monthAQICompare = computed(() => {
-  const currentYearData = monthlyAggregatedData.value.map(entry => {
+  const currentYearData = monthlyAggregatedData.value.map((entry) => {
     if (entry.data && entry.data.length > 0) {
-      const sum = entry.data.reduce((acc, r) => acc + (Number(r[`${props.metric}_mean`]) || 0), 0);
+      const sum = entry.data.reduce(
+        (acc, r) => acc + (Number(r[`${props.metric}_mean`]) || 0),
+        0
+      );
       return sum / entry.data.length;
     }
     return 0;
   });
 
   return {
-    days: monthlyAggregatedData.value.map(m => `${m.month}`),
-    series: [{ name: props.currentYear, data: currentYearData }]
+    days: monthlyAggregatedData.value.map((m) => `${m.month}`),
+    series: [{ name: props.currentYear, data: currentYearData }],
   };
 });
 
+const monthCorrMatrix = computed(() => {
+  // Use current month daily data for correlation
+  if (!currentMonthDailyData.value || currentMonthDailyData.value.length === 0)
+    return [];
+
+  // Helper to get raw rows for correlation check
+  const rawRows = currentMonthDailyData.value.map((r) => {
+    return {
+      pm25: Number(r.pm25_mean),
+      pm10: Number(r.pm10_mean),
+      so2: Number(r.so2_mean),
+      no2: Number(r.no2_mean),
+      co: Number(r.co_mean),
+      o3: Number(r.o3_mean),
+      temp: Number(r.temp_mean),
+      rh: Number(r.rh_mean),
+      psfc: Number(r.psfc_mean),
+      wind: Number(
+        r.wind_mean ||
+          Math.sqrt((Number(r.u_mean) || 0) ** 2 + (Number(r.v_mean) || 0) ** 2)
+      ),
+    };
+  });
+
+  // computeCorrMatrix expects structure [{data: entries}]
+  const wrappedData = [{ data: rawRows }];
+
+  return computeCorrMatrix(
+    wrappedData,
+    ["pm25", "pm10", "so2", "no2", "co", "o3"],
+    ["temp", "rh", "psfc", "wind"]
+  );
+});
+
 const monthWindVectors = computed(() => {
-  if (mapMode.value === 'weather' && weatherMetric.value === 'wind') {
+  if (mapMode.value === "weather" && weatherMetric.value === "wind") {
     if (!currentMonthDailyData.value || !regionIndex.value) return [];
-    return buildMonthlyWindVectors(currentMonthDailyData.value, regionIndex.value, 0.15);
+    return buildMonthlyWindVectors(
+      currentMonthDailyData.value,
+      regionIndex.value,
+      0.15
+    );
   }
   return [];
 });
 
 function handleMapSelect(name) {
-  emit('update:region', name);
+  emit("update:region", name);
 }
 
 function handleRankingSelect(name) {
-  emit('update:region', name);
+  emit("update:region", name);
 }
 
 async function loadMonthlyAggregatedData() {
@@ -536,16 +720,19 @@ async function loadMonthlyAggregatedData() {
       regionIndex.value = await loadRegionIndex();
     }
 
-    const months = Array.from({ length: 12 }, (_, i) => `${props.currentYear}-${String(i + 1).padStart(2, '0')}`);
-    const promises = months.map(m => loadOneMonth(m));
+    const months = Array.from(
+      { length: 12 },
+      (_, i) => `${props.currentYear}-${String(i + 1).padStart(2, "0")}`
+    );
+    const promises = months.map((m) => loadOneMonth(m));
     const results = await Promise.all(promises);
 
     monthlyAggregatedData.value = results.map((data, index) => ({
       date: months[index],
       month: index + 1,
-      data: data || []
+      data: data || [],
     }));
-    
+
     await loadMonthDetail(currentMonth.value);
   } catch (err) {
     console.error("[MonthView] Failed to load aggregated data:", err);
@@ -554,37 +741,44 @@ async function loadMonthlyAggregatedData() {
 
 async function loadMonthDetail(monthNum) {
   isMonthDetailLoading.value = true;
-  currentMonthDailyData.value = []; 
+  currentMonthDailyData.value = [];
 
   const year = props.currentYear;
-  const monthStr = String(monthNum).padStart(2, '0');
+  const monthStr = String(monthNum).padStart(2, "0");
   const dateStr = `${year}-${monthStr}`;
-  
+
   try {
     // 加载月度数据
     const monthlyData = await loadDataByGranularity("month", year, dateStr);
-    
+
     if (monthlyData && monthlyData.length > 0) {
       currentMonthDailyData.value = monthlyData;
-      console.log(`[MonthView] Loaded monthly data for ${dateStr}:`, monthlyData.length, 'records');
+      console.log(
+        `[MonthView] Loaded monthly data for ${dateStr}:`,
+        monthlyData.length,
+        "records"
+      );
     } else {
       console.warn(`[MonthView] No monthly data for ${dateStr}`);
       currentMonthDailyData.value = [];
     }
   } catch (error) {
-    console.error(`[MonthView] Error loading monthly data for ${dateStr}:`, error);
+    console.error(
+      `[MonthView] Error loading monthly data for ${dateStr}:`,
+      error
+    );
     currentMonthDailyData.value = [];
   }
-  
+
   isMonthDetailLoading.value = false;
 }
 
 function handleMonthSelect(month) {
-  const m = typeof month === 'string' ? parseInt(month.split('-')[1]) : month;
+  const m = typeof month === "string" ? parseInt(month.split("-")[1]) : month;
   if (currentMonth.value !== m) {
     currentMonth.value = m;
     loadMonthDetail(m);
-    emit('select-month', m);
+    emit("select-month", m);
   }
 }
 
@@ -594,29 +788,44 @@ async function initMapData() {
     // 从 regionIndex 中提取所有地名作为 mapGeoNames
     if (regionIndex.value) {
       mapGeoNames.value = Array.from(regionIndex.value.keys());
-      console.log(`[MonthView] Loaded ${mapGeoNames.value.length} geo names from region index`);
+      console.log(
+        `[MonthView] Loaded ${mapGeoNames.value.length} geo names from region index`
+      );
     }
   }
 }
 
-watch(() => props.currentYear, async () => {
-  console.log(`[MonthView] Watch currentYear triggered for year: ${props.currentYear}`);
-  await initMapData(); 
-  console.log(`[MonthView] initMapData done`);
-  
-  await loadMonthlyAggregatedData();
-  console.log(`[MonthView] loadMonthlyAggregatedData done, data length: ${monthlyAggregatedData.value.length}`);
-  
-  // 已经在 loadMonthlyAggregatedData 中调用了 loadMonthDetail，无需重复
-}, { immediate: true });
+watch(
+  () => props.currentYear,
+  async () => {
+    console.log(
+      `[MonthView] Watch currentYear triggered for year: ${props.currentYear}`
+    );
+    await initMapData();
+    console.log(`[MonthView] initMapData done`);
 
-watch(() => props.metric, async () => {
-  // 指标改变时，重新加载数据
-  if (monthlyAggregatedData.value.length === 0) {
-    console.log(`[MonthView] Watch metric triggered, but monthlyAggregatedData empty, loading...`);
     await loadMonthlyAggregatedData();
+    console.log(
+      `[MonthView] loadMonthlyAggregatedData done, data length: ${monthlyAggregatedData.value.length}`
+    );
+
+    // 已经在 loadMonthlyAggregatedData 中调用了 loadMonthDetail，无需重复
+  },
+  { immediate: true }
+);
+
+watch(
+  () => props.metric,
+  async () => {
+    // 指标改变时，重新加载数据
+    if (monthlyAggregatedData.value.length === 0) {
+      console.log(
+        `[MonthView] Watch metric triggered, but monthlyAggregatedData empty, loading...`
+      );
+      await loadMonthlyAggregatedData();
+    }
   }
-});
+);
 </script>
 
 <style scoped>
@@ -650,7 +859,7 @@ watch(() => props.metric, async () => {
 }
 
 .section-badge {
-  background: #FFE600;
+  background: #ffe600;
   color: #000;
   padding: 2px 8px;
   font-family: "Oswald", sans-serif;
@@ -675,14 +884,16 @@ watch(() => props.metric, async () => {
   border: none;
 }
 
-.year-selector, .month-selector {
+.year-selector,
+.month-selector {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-.year-selector label, .month-selector label {
-  color: #FFE600;
+.year-selector label,
+.month-selector label {
+  color: #ffe600;
   font-family: "Oswald", sans-serif;
   font-size: 14px;
   font-weight: normal;
@@ -721,16 +932,16 @@ watch(() => props.metric, async () => {
 }
 
 .month-chip:hover {
-  border-color: #FFE600;
+  border-color: #ffe600;
   color: #0a0a0a;
   background: transparent;
 }
 
 .month-chip.active {
-  background: #FFE600;
+  background: #ffe600;
   color: #000;
   font-weight: bold;
-  border-color: #FFE600;
+  border-color: #ffe600;
   box-shadow: none;
 }
 
@@ -750,7 +961,7 @@ watch(() => props.metric, async () => {
 }
 
 .pane {
-  background: rgba(255,255,255,0.95);
+  background: rgba(255, 255, 255, 0.95);
   border: 1px solid #ddd;
   padding: 12px;
   display: flex;
@@ -762,7 +973,7 @@ watch(() => props.metric, async () => {
   position: relative;
   padding: 0;
   border: 1px solid #ddd;
-  background: rgba(255,255,255,0.95);
+  background: rgba(255, 255, 255, 0.95);
 }
 
 .side-pane {
@@ -778,7 +989,7 @@ watch(() => props.metric, async () => {
   flex-direction: column;
   align-items: flex-start;
   gap: 8px;
-  background: rgba(0,0,0,0.8);
+  background: rgba(0, 0, 0, 0.8);
   padding: 8px;
   border: 1px solid #ddd;
 }
@@ -802,7 +1013,7 @@ watch(() => props.metric, async () => {
 }
 
 .mode-group button.active {
-  background: #FFE600;
+  background: #ffe600;
   color: #000;
   font-weight: bold;
 }
@@ -814,12 +1025,14 @@ watch(() => props.metric, async () => {
   margin: 0 4px;
 }
 
-.metric-toggle, .weather-toggle {
+.metric-toggle,
+.weather-toggle {
   display: flex;
   gap: 2px;
 }
 
-.metric-toggle button, .weather-toggle button {
+.metric-toggle button,
+.weather-toggle button {
   background: #fff;
   border: 1px solid #ddd;
   color: #444;
@@ -830,15 +1043,17 @@ watch(() => props.metric, async () => {
   border-radius: 0;
 }
 
-.metric-toggle button:hover, .weather-toggle button:hover {
+.metric-toggle button:hover,
+.weather-toggle button:hover {
   color: #0a0a0a;
   border-color: #666;
 }
 
-.metric-toggle button.active, .weather-toggle button.active {
-  background: #FFE600;
+.metric-toggle button.active,
+.weather-toggle button.active {
+  background: #ffe600;
   color: #000;
-  border-color: #FFE600;
+  border-color: #ffe600;
   font-weight: bold;
 }
 
@@ -858,7 +1073,7 @@ watch(() => props.metric, async () => {
   align-items: center;
   justify-content: center;
   height: 100%;
-  background: rgba(0,0,0,0.02);
+  background: rgba(0, 0, 0, 0.02);
 }
 
 .placeholder-content {
@@ -866,7 +1081,7 @@ watch(() => props.metric, async () => {
 }
 
 .placeholder-content h4 {
-  color: #FFE600;
+  color: #ffe600;
   font-family: "Oswald", sans-serif;
   font-size: 14px;
   margin: 0 0 8px 0;
@@ -887,5 +1102,12 @@ watch(() => props.metric, async () => {
 .control-pane {
   margin-bottom: 20px;
   min-height: auto;
+}
+
+.pane.full-width-pane {
+  grid-column: 1 / -1;
+  margin-bottom: 20px;
+  width: 100%;
+  box-sizing: border-box;
 }
 </style>
