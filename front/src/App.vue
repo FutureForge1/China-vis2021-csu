@@ -518,6 +518,86 @@
           </div>
         </section>
 
+        <section class="layout secondary">
+          <div class="pane">
+            <h3>省份污染物径向分析</h3>
+            <ProvinceRadarChart
+              :data="monthlyData"
+              :metric="monthlyMetric"
+              :selected-province="selectedRegion"
+              :year="selectedYear"
+              :month="selectedMonth"
+            />
+          </div>
+          <div class="pane">
+<!--            <h3>分析说明</h3>-->
+            <div class="radar-explanation">
+              <p>此图展示了各省份在6个主要污染物维度上的分布情况：</p>
+              <ul>
+                <li>每个轴代表一种污染物浓度</li>
+                <li>省份距离中心越远，该污染物浓度越高</li>
+                <li>图形面积越大，综合污染水平越高</li>
+                <li>红色高亮显示当前选中省份</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <!-- 在月度分析模板的合适位置添加 -->
+        <section class="layout single">
+          <div class="pane">
+            <h3>污染程度冰柱图分析</h3>
+            <div class="chart-description">
+              <p>通过冰柱图展示全国-省份-城市的污染层级结构，条形长度表示污染程度</p>
+            </div>
+
+            <IcicleChart
+              :data="monthlyData"
+              :metric="monthlyMetric"
+              :selected-region="selectedRegion"
+              :selected-year="selectedYear"
+              :selected-month="selectedMonth"
+              @region-select="handleMapSelect"
+              v-if="monthlyData.length > 0"
+            />
+
+            <div class="icicle-explanation">
+              <h4>图表解读说明</h4>
+              <ul>
+                <li><strong>全国层级</strong>：最顶层的条形，表示全国总体污染程度</li>
+                <li><strong>省份层级</strong>：第二层条形，各省份条形长度之和等于全国条形长度</li>
+                <li><strong>城市层级</strong>：最底层条形，各城市条形长度之和等于所属省份条形长度</li>
+                <li><strong>颜色编码</strong>：从绿色（低污染）到红色（高污染）表示污染程度</li>
+                <li><strong>交互功能</strong>：点击任一区域可选中该区域，与其他图表联动</li>
+              </ul>
+
+              <div class="view-mode-info">
+                <h5>视图模式说明：</h5>
+                <p><strong>当前污染物模式</strong>：显示当前选中污染物（{{ monthlyMetric.toUpperCase() }}）的浓度分布</p>
+                <p><strong>综合污染指数模式</strong>：基于6种污染物的加权平均值，更全面反映污染状况</p>
+              </div>
+            </div>
+          </div>
+        </section>
+<!--        &lt;!&ndash; 在月度分析模板的合适位置添加 &ndash;&gt;-->
+<!--        <section class="layout single"> &lt;!&ndash; 改为 single 布局 &ndash;&gt;-->
+<!--          <div class="pane">-->
+<!--            <h3>污染物力引导布局分析</h3>-->
+<!--            <div class="chart-description">-->
+<!--              <p>通过力引导布局可视化展示各省份在不同污染物维度上的分布特征</p>-->
+<!--            </div>-->
+
+<!--            <ProvinceForceLayoutChart-->
+<!--              :data="monthlyData"-->
+<!--              :metric="monthlyMetric"-->
+<!--              :selected-province="selectedRegion"-->
+<!--              :selected-year="selectedYear"-->
+<!--              :selected-month="selectedMonth"-->
+<!--              @province-select="handleMapSelect"-->
+<!--              v-if="monthlyData.length > 0"-->
+<!--            />-->
+<!--          </div>-->
+<!--        </section>-->
 <!--        <section class="layout secondary">-->
 <!--          <div class="pane">-->
 <!--            <h3>城市详细分析</h3>-->
@@ -574,6 +654,10 @@ import MonthView from "./components/MonthView.vue";
 import CityPollutionCalendar from "./components/CityPollutionCalendar.vue";
 import ProvinceDimensionChart from "./components/ProvinceDimensionChart.vue";
 import MonthlyRadar from "./components/MonthlyRadar.vue";
+import ProvinceRadarChart from "./components/ProvinceRadarChart.vue";
+import ProvinceForceLayoutChart from "./components/ProvinceForceLayoutChart.vue";
+import IcicleChart from "./components/IcicleChart.vue";
+
 import {
   classifyLevels,
   computeRadialVector,
@@ -1561,6 +1645,20 @@ watch(() => monthlyData.value, (newData) => {
   }
 });
 
+
+// 计算可用省份列表
+const availableProvinces = computed(() => {
+  if (!monthlyData.value.length) return [];
+
+  const provinces = new Set();
+  monthlyData.value.forEach(item => {
+    if (item.province) provinces.add(item.province);
+  });
+
+  return Array.from(provinces).sort();
+});
+
+
 </script>
 
 <style scoped>
@@ -2187,6 +2285,129 @@ h1 {
   line-height: 1.5;
   color: #999;
   max-width: 300px;
+}
+
+.radar-explanation {
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.radar-explanation ul {
+  margin: 10px 0;
+  padding-left: 20px;
+}
+
+.radar-explanation li {
+  margin-bottom: 5px;
+}
+
+.chart-description {
+  font-size: 12px;
+  color: #666;
+  line-height: 1.4;
+  margin-bottom: 15px;
+  text-align: center;
+}
+
+.force-layout-explanation {
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.force-layout-explanation h4 {
+  color: #2f7e57;
+  margin: 15px 0 8px 0;
+  font-size: 14px;
+}
+
+.force-layout-explanation ul {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+
+.force-layout-explanation li {
+  margin-bottom: 5px;
+}
+
+.force-layout-explanation .example {
+  background: #e3f2fd;
+  padding: 10px;
+  border-radius: 6px;
+  margin-top: 15px;
+  border-left: 3px solid #4ecdc4;
+}
+
+.force-layout-explanation .example strong {
+  color: #1976d2;
+}
+
+.force-layout-explanation .example p {
+  margin: 5px 0 0 0;
+  font-size: 12px;
+}
+
+#monthly-analysis-supplement {
+  margin: 20px;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+}
+
+.icicle-explanation {
+  margin-top: 20px;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border: 1px solid #e0e0e0;
+}
+
+.icicle-explanation h4 {
+  margin: 0 0 10px 0;
+  color: #2c3e50;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.icicle-explanation ul {
+  margin: 10px 0;
+  padding-left: 20px;
+}
+
+.icicle-explanation li {
+  margin-bottom: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #34495e;
+}
+
+.icicle-explanation strong {
+  color: #2c3e50;
+}
+
+.view-mode-info {
+  margin-top: 15px;
+  padding: 12px;
+  background: #e8f4fd;
+  border-radius: 4px;
+  border-left: 4px solid #3498db;
+}
+
+.view-mode-info h5 {
+  margin: 0 0 8px 0;
+  color: #2980b9;
+  font-size: 13px;
+}
+
+.view-mode-info p {
+  margin: 5px 0;
+  font-size: 12px;
+  color: #2c3e50;
 }
 
 </style>

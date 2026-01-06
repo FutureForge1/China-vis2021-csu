@@ -479,9 +479,9 @@ const monthLevelStats = computed(() => {
 
     // 映射字段名以适配 classifyLevels
     const statsData = monthEntry.data.map(row => ({
-      [props.metric]: row[`${props.metric}_mean`] 
+      [props.metric]: row[`${props.metric}_mean`]
     }));
-    
+
     return classifyLevels(statsData, props.metric);
   }
 });
