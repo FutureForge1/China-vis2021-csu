@@ -5,83 +5,118 @@
       meta="2013-2018训练 · 2019 预测 · 实况对比"
     />
 
-    <div class="toolbar">
-      <div class="group">
-        <label>数据源</label>
-        <div class="chips">
-          <button
-            :class="{ active: mode === 'actual' }"
-            @click="mode = 'actual'"
+    <div class="toolbar glass-panel">
+      <!-- Mode Selection -->
+      <div class="control-group">
+        <label>显示模式</label>
+        <div class="segmented-control">
+          <div
+            v-for="m in [
+              { k: 'actual', t: '实况' },
+              { k: 'pred', t: '预测' },
+              { k: 'compare', t: '对比' },
+            ]"
+            :key="m.k"
+            class="segment"
+            :class="{ active: mode === m.k }"
+            @click="mode = m.k"
           >
-            实况
-          </button>
-          <button :class="{ active: mode === 'pred' }" @click="mode = 'pred'">
-            预测
-          </button>
-          <button
-            :class="{ active: mode === 'compare' }"
-            @click="mode = 'compare'"
-          >
-            对比
-          </button>
+            {{ m.t }}
+          </div>
         </div>
       </div>
-      <div class="group">
-        <label>粒度</label>
-        <div class="chips">
-          <button
-            :class="{ active: granularity === 'day' }"
-            @click="granularity = 'day'"
+
+      <!-- Granularity -->
+      <div class="control-group">
+        <label>时间粒度</label>
+        <div class="segmented-control">
+          <div
+            v-for="g in [
+              { k: 'day', t: '日' },
+              { k: 'month', t: '月' },
+              { k: 'year', t: '年' },
+            ]"
+            :key="g.k"
+            class="segment"
+            :class="{ active: granularity === g.k }"
+            @click="granularity = g.k"
           >
-            日
-          </button>
-          <button
-            :class="{ active: granularity === 'month' }"
-            @click="granularity = 'month'"
-          >
-            月
-          </button>
-          <button
-            :class="{ active: granularity === 'year' }"
-            @click="granularity = 'year'"
-          >
-            年
-          </button>
+            {{ g.t }}
+          </div>
         </div>
       </div>
-      <div class="group">
-        <label>日期</label>
-        <select v-model="currentDate">
-          <option v-for="d in dateOptions" :key="d" :value="d">{{ d }}</option>
-        </select>
+
+      <!-- Date Select -->
+      <div class="control-group">
+        <label>时间点</label>
+        <div class="custom-select-wrapper">
+          <select v-model="currentDate" class="glass-select">
+            <option v-for="d in dateOptions" :key="d" :value="d">
+              {{ d }}
+            </option>
+          </select>
+          <span class="select-arrow">▼</span>
+        </div>
       </div>
-      <div class="group">
+
+      <!-- Region Select -->
+      <div class="control-group">
         <label>地区</label>
-        <select v-model="region">
-          <option
-            v-for="opt in regionOptions"
-            :key="opt.value"
-            :value="opt.value"
-          >
-            {{ opt.label }}
-          </option>
-        </select>
+        <div class="custom-select-wrapper">
+          <select v-model="region" class="glass-select">
+            <option
+              v-for="opt in regionOptions"
+              :key="opt.value"
+              :value="opt.value"
+            >
+              {{ opt.label }}
+            </option>
+          </select>
+          <span class="select-arrow">▼</span>
+        </div>
       </div>
-      <div class="group">
+
+      <!-- Search (Merged) -->
+      <div class="control-group search-group">
+        <div class="search-box">
+          <input
+            v-model="searchQuery"
+            type="text"
+            placeholder="搜索城市 或 经度,纬度"
+            @keyup.enter="handleSearch"
+            class="glass-input"
+          />
+          <button class="icon-btn" @click="handleSearch" title="定位">⌖</button>
+        </div>
+      </div>
+
+      <!-- Metric Select -->
+      <div class="control-group">
         <label>指标</label>
-        <select v-model="metric">
-          <option value="pm25">PM2.5</option>
-          <option value="pm10">PM10</option>
-          <option value="so2">SO₂</option>
-          <option value="no2">NO₂</option>
-          <option value="co">CO</option>
-          <option value="o3">O₃</option>
-          <option value="temp">温度</option>
-          <option value="rh">湿度</option>
-          <option value="psfc">气压</option>
-          <option value="u">风U</option>
-          <option value="v">风V</option>
-        </select>
+        <div class="custom-select-wrapper">
+          <select v-model="metric" class="glass-select">
+            <option
+              v-for="k in [
+                'pm25',
+                'pm10',
+                'so2',
+                'no2',
+                'co',
+                'o3',
+                'temp',
+                'rh',
+                'psfc',
+                'u',
+                'v',
+              ]"
+              :value="k"
+              :key="k"
+            >
+              {{ k.toUpperCase() }}
+            </option>
+          </select>
+          <span class="select-arrow">▼</span>
+        </div>
       </div>
     </div>
 
@@ -115,20 +150,8 @@
             >
           </div>
         </div>
-        <div class="note">
-          仅使用 2019 全年数据，若预测文件不存在则回退为实况。
-        </div>
-        <div class="importance" v-if="featureImportance.length">
-          <h4>特征重要性 (ΔMAE 归一化)</h4>
-          <ul>
-            <li v-for="item in featureImportance" :key="item.feature">
-              <span class="name">{{ item.feature.toUpperCase() }}</span>
-              <span class="value"
-                >{{ (item.importance * 100).toFixed(1) }}%</span
-              >
-            </li>
-          </ul>
-        </div>
+        <div class="note">数据：2019全年。若预测文件缺失，将回退显示实况。</div>
+        <!-- 移除原有列表形式的重要性展示，改用 ECharts 渲染 -->
       </div>
     </section>
 
@@ -175,6 +198,7 @@ import {
   ref,
   watch,
 } from "vue";
+import { loadRegionIndex } from "../utils/dataLoader";
 import MapPanel from "./MapPanel.vue";
 import SectionHeading from "./SectionHeading.vue";
 import TrendLine from "./TrendLine.vue";
@@ -182,17 +206,34 @@ import TrendLine from "./TrendLine.vue";
 const metric = ref("pm25");
 const mode = ref("pred");
 const currentDate = ref("2019-01-01");
-const dateOptions = ref([]);
+const rawDates = ref([]);
+const dateOptions = computed(() => {
+  if (granularity.value === "day") return rawDates.value;
+  if (granularity.value === "month") {
+    const months = Array.from(
+      new Set(rawDates.value.map((d) => d.slice(0, 7)))
+    );
+    return months.sort();
+  }
+  return [YEAR];
+});
 const selectedRegion = ref("");
 const granularity = ref("day");
 const region = ref("all");
+const searchQuery = ref("");
 const regionOptions = ref([{ label: "全国平均", value: "all" }]);
 const featureImportance = ref([]);
 const metricsSummary = ref(null);
+const regionIndex = ref(null);
 
 const YEAR = "2019";
 const actualCache = ref(new Map());
 const predCache = ref(new Map());
+const selectedCoord = computed(() => {
+  if (region.value === "all" || !regionIndex.value) return null;
+  const hit = regionIndex.value.get(region.value);
+  return hit || null;
+});
 
 let compareChart = null;
 const compareRef = ref(null);
@@ -228,21 +269,83 @@ async function fetchJson(paths) {
 
 async function loadDay(dateStr, cache, base) {
   if (cache.value.has(dateStr)) return cache.value.get(dateStr);
-  const data = await fetchJson(buildPaths(base, dateStr));
+  let data = await fetchJson(buildPaths(base, dateStr));
+  // 标准化数据：确保所有数值字段都是数字类型（预测数据可能是number，实况数据可能是string）
+  if (data && Array.isArray(data)) {
+    data = data.map((row) => {
+      const normalized = { ...row };
+      // 转换所有可能的数值字段
+      const numericFields = [
+        "pm25",
+        "pm10",
+        "so2",
+        "no2",
+        "co",
+        "o3",
+        "temp",
+        "rh",
+        "psfc",
+        "u",
+        "v",
+      ];
+      for (const field of numericFields) {
+        if (normalized[field] !== undefined && normalized[field] !== null) {
+          normalized[field] = Number(normalized[field]);
+        }
+      }
+      return normalized;
+    });
+  }
   cache.value.set(dateStr, data || []);
   return data || [];
 }
 
 async function loadIndex() {
-  const res = await fetch(`/data/${YEAR}/index.json`);
-  if (res.ok) {
-    const json = await res.json();
-    dateOptions.value = json.days || [];
-    if (dateOptions.value.length) currentDate.value = dateOptions.value[0];
-  } else {
-    dateOptions.value = [`${YEAR}-01-01`];
-    currentDate.value = `${YEAR}-01-01`;
+  // 强制生成 2019 全年日期，不再依赖 index.json，确保显示完整的一年
+  const days = [];
+  const start = new Date(`${YEAR}-01-01`);
+  const end = new Date(`${YEAR}-12-31`);
+  for (let d = start; d <= end; d.setDate(d.getDate() + 1)) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const da = String(d.getDate()).padStart(2, "0");
+    days.push(`${y}-${m}-${da}`);
   }
+  rawDates.value = days;
+  finalizeDateInit();
+}
+
+function finalizeDateInit() {
+  const opts = dateOptions.value;
+  if (opts.length && !opts.includes(currentDate.value)) {
+    currentDate.value = opts[0];
+  }
+}
+
+watch(granularity, () => {
+  const opts = dateOptions.value;
+  if (!opts.includes(currentDate.value) && opts.length) {
+    currentDate.value = opts[0];
+  }
+});
+
+function rowsForSelection(cache) {
+  if (granularity.value === "day") {
+    return cache.value.get(currentDate.value) || [];
+  }
+  if (granularity.value === "month") {
+    const prefix = `${currentDate.value}-`;
+    const acc = [];
+    for (const [d, rows] of cache.value.entries()) {
+      if (d.startsWith(prefix)) acc.push(...(rows || []));
+    }
+    return acc;
+  }
+  const acc = [];
+  for (const rows of cache.value.values()) {
+    if (rows) acc.push(...rows);
+  }
+  return acc;
 }
 
 function aggregateMap(rows, metricName) {
@@ -278,6 +381,65 @@ function averageMetric(rows, metricName = metric.value) {
 function matchesRegion(row, regionName) {
   if (regionName === "all" || !regionName) return true;
   return row.province === regionName || row.city === regionName;
+}
+
+function findRegionByName(name) {
+  if (!name) return null;
+  const trimmed = name.trim();
+  if (!trimmed) return null;
+  // 优先精确匹配 options
+  const direct = regionOptions.value.find(
+    (o) => o.value === trimmed || o.label === trimmed
+  );
+  if (direct) return direct.value;
+  // 退化为包含匹配（RegionIndex 里更多别名）
+  if (regionIndex.value) {
+    for (const key of regionIndex.value.keys()) {
+      if (key.includes(trimmed)) return key;
+    }
+  }
+  return null;
+}
+
+function findClosestRegionByCoord(lon, lat) {
+  if (!regionIndex.value) return null;
+  let best = null;
+  let bestDist = Number.POSITIVE_INFINITY;
+  for (const [name, coord] of regionIndex.value.entries()) {
+    const dLon = lon - coord.lon;
+    const dLat = lat - coord.lat;
+    const dist2 = dLon * dLon + dLat * dLat; // 平面近似足够
+    if (dist2 < bestDist) {
+      bestDist = dist2;
+      best = name;
+    }
+  }
+  return best;
+}
+
+function handleSearch() {
+  const q = searchQuery.value.trim();
+  if (!q) return;
+  // 经纬度模式："116.4,39.9" 或 "116.4 39.9"
+  const coordMatch = q.match(/(-?\d+(?:\.\d+)?)\s*[ ,]\s*(-?\d+(?:\.\d+)?)/);
+  if (coordMatch) {
+    const lon = Number(coordMatch[1]);
+    const lat = Number(coordMatch[2]);
+    if (Number.isFinite(lon) && Number.isFinite(lat)) {
+      const near = findClosestRegionByCoord(lon, lat);
+      if (near) {
+        region.value = near;
+        selectedRegion.value = near;
+      }
+    }
+    return;
+  }
+
+  const hit = findRegionByName(q);
+  if (hit) {
+    region.value = hit;
+    selectedRegion.value = hit;
+  }
 }
 
 function aggregateSeries(cache, metricName) {
@@ -339,8 +501,8 @@ function aggregateByMonth(cache, metricName) {
 const mapSeries = computed(() => {
   const rows =
     mode.value === "pred"
-      ? predCache.value.get(currentDate.value) || []
-      : actualCache.value.get(currentDate.value) || [];
+      ? rowsForSelection(predCache)
+      : rowsForSelection(actualCache);
   return aggregateMap(rows, metric.value);
 });
 
@@ -368,22 +530,56 @@ const monthlyCompare = computed(() => {
   }));
 });
 
-const actualAvg = computed(() =>
-  averageMetric(actualCache.value.get(currentDate.value) || [])
-);
-const predAvg = computed(() =>
-  averageMetric(predCache.value.get(currentDate.value) || [])
-);
+const actualAvg = computed(() => {
+  const rows = rowsForSelection(actualCache).filter((r) =>
+    matchesRegion(r, region.value)
+  );
+  return averageMetric(rows);
+});
+
+const predAvg = computed(() => {
+  const rows = rowsForSelection(predCache).filter((r) =>
+    matchesRegion(r, region.value)
+  );
+  return averageMetric(rows);
+});
+
 const diffAvg = computed(() => predAvg.value - actualAvg.value);
 
 function handleMapSelect(name) {
+  if (!name) {
+    // 名字为空，说明点击了 "BACK TO NATIONAL"
+    selectedRegion.value = "";
+    region.value = "all";
+    return;
+  }
+
   selectedRegion.value = name;
+
+  // 尝试在下拉框选项中找到对应值
+  const hit = regionOptions.value.find(
+    (o) => o.value === name || o.label === name
+  );
+  if (hit) {
+    region.value = hit.value;
+  } else {
+    // 如果不在列表里（比如具体城市但列表只有省），也强制选中
+    region.value = name;
+  }
 }
 
+watch(region, (newVal) => {
+  if (newVal === "all") {
+    selectedRegion.value = "";
+  } else {
+    selectedRegion.value = newVal;
+  }
+});
+
 async function preloadAll() {
-  if (!dateOptions.value.length) return;
+  if (!rawDates.value.length) return;
   await Promise.all(
-    dateOptions.value.map(async (d) => {
+    rawDates.value.map(async (d) => {
       await loadDay(d, actualCache, "/data");
       const pred = await loadDay(d, predCache, "/data/predictions");
       if (!pred?.length) {
@@ -417,36 +613,36 @@ function renderCompare() {
 
   compareChart.setOption({
     backgroundColor: "transparent",
-    grid: { top: 16, bottom: 28, left: 36, right: 12 },
+    grid: { top: 36, bottom: 28, left: 48, right: 16 },
     tooltip: { trigger: "axis" },
     xAxis: {
       type: "category",
       data: trendDates.value,
-      axisLabel: { color: "#ccc", fontSize: 10, interval: "auto" },
-      axisLine: { lineStyle: { color: "#666" } },
+      axisLabel: { color: "#666", fontSize: 10, interval: "auto" },
+      axisLine: { lineStyle: { color: "#ddd" } },
     },
     yAxis: {
       type: "value",
-      axisLabel: { color: "#ccc", fontSize: 10 },
-      splitLine: { lineStyle: { color: "rgba(255,255,255,0.08)" } },
+      axisLabel: { color: "#666", fontSize: 10 },
+      splitLine: { lineStyle: { color: "rgba(0,0,0,0.06)" } },
     },
-    legend: { data: ["实况", "预测"], textStyle: { color: "#ddd" } },
+    legend: { data: ["实况", "预测"], textStyle: { color: "#333" } },
     series: [
       {
         name: "实况",
         type: "line",
         data: actual,
         showSymbol: false,
-        lineStyle: { color: "#888", width: 1.5 },
-        areaStyle: { color: "rgba(255,255,255,0.05)" },
+        lineStyle: { color: "#7FB3FF", width: 2 },
+        areaStyle: { color: "rgba(127,179,255,0.15)" },
       },
       {
         name: "预测",
         type: "line",
         data: pred,
         showSymbol: false,
-        lineStyle: { color: "#FFE600", width: 1.8 },
-        areaStyle: { color: "rgba(255,230,0,0.08)" },
+        lineStyle: { color: "#FFE600", width: 2.5 },
+        areaStyle: { color: "rgba(255,230,0,0.2)" },
       },
     ],
   });
@@ -462,19 +658,19 @@ function renderMonthly() {
 
   monthlyChart.setOption({
     backgroundColor: "transparent",
-    grid: { top: 28, bottom: 36, left: 42, right: 16 },
+    grid: { top: 36, bottom: 42, left: 48, right: 16 },
     tooltip: { trigger: "axis" },
-    legend: { data: ["实况", "预测"], textStyle: { color: "#ddd" } },
+    legend: { data: ["实况", "预测"], textStyle: { color: "#333" } },
     xAxis: {
       type: "category",
       data: months,
-      axisLabel: { color: "#ccc", rotate: 30, fontSize: 10 },
-      axisLine: { lineStyle: { color: "#666" } },
+      axisLabel: { color: "#666", rotate: 30, fontSize: 10 },
+      axisLine: { lineStyle: { color: "#ddd" } },
     },
     yAxis: {
       type: "value",
-      axisLabel: { color: "#ccc", fontSize: 10 },
-      splitLine: { lineStyle: { color: "rgba(255,255,255,0.08)" } },
+      axisLabel: { color: "#666", fontSize: 10 },
+      splitLine: { lineStyle: { color: "rgba(0,0,0,0.06)" } },
     },
     series: [
       {
@@ -498,34 +694,50 @@ function renderFeature() {
   if (!featureRef.value) return;
   if (!featureChart) featureChart = echarts.init(featureRef.value);
 
-  const names = featureImportance.value.map((f) => f.feature.toUpperCase());
-  const importance = featureImportance.value.map((f) =>
-    Number((f.importance * 100).toFixed(2))
-  );
-  const maeMap = new Map(
-    (metricsSummary.value?.per_feature || []).map((m) => [m.feature, m.mae])
-  );
-  const mae = featureImportance.value.map((f) => maeMap.get(f.feature) ?? 0);
+  const data = featureImportance.value.map((f) => ({
+    name: f.feature.toUpperCase(),
+    value: Number((f.importance * 100).toFixed(2)),
+  }));
+
+  // Sort for Nightingale Rose effect
+  data.sort((a, b) => a.value - b.value);
 
   featureChart.setOption({
     backgroundColor: "transparent",
-    tooltip: { trigger: "axis" },
-    legend: { data: ["重要性(%)", "MAE"], textStyle: { color: "#ddd" } },
-    grid: { top: 32, bottom: 20, left: 60, right: 24 },
-    xAxis: {
-      type: "value",
-      axisLabel: { color: "#ccc" },
-      splitLine: { lineStyle: { color: "rgba(255,255,255,0.08)" } },
+    tooltip: { trigger: "item", formatter: "{b}: {c}%" },
+    legend: {
+      type: "scroll",
+      left: "left",
+      top: "middle",
+      orient: "vertical",
+      textStyle: { color: "#333", fontSize: 11 },
     },
-    yAxis: { type: "category", data: names, axisLabel: { color: "#ccc" } },
     series: [
       {
-        name: "重要性(%)",
-        type: "bar",
-        data: importance,
-        itemStyle: { color: "#FFE600" },
+        name: "特征重要性",
+        type: "pie",
+        radius: [20, 100],
+        center: ["60%", "50%"],
+        roseType: "area",
+        itemStyle: {
+          borderRadius: 4,
+          borderColor: "rgba(0,0,0,0.5)",
+          borderWidth: 1,
+        },
+        data: data,
+        label: {
+          color: "#333",
+          fontSize: 11,
+        },
+        labelLine: {
+          lineStyle: { color: "rgba(0, 0, 0, 0.2)" },
+        },
+        animationType: "scale",
+        animationEasing: "elasticOut",
+        animationDelay: function (idx) {
+          return Math.random() * 200;
+        },
       },
-      { name: "MAE", type: "bar", data: mae, itemStyle: { color: "#7FB3FF" } },
     ],
   });
 }
@@ -537,6 +749,7 @@ watch([metric, currentDate, mode, granularity, region], () => {
 });
 
 onMounted(async () => {
+  regionIndex.value = await loadRegionIndex();
   await loadIndex();
   await preloadAll();
   await loadFeatureImportance();
@@ -595,48 +808,169 @@ const granularityLabel = computed(() => {
 .forecast-page {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
+  color: var(--c-black);
+  padding: 0;
 }
-.toolbar {
+
+.glass-panel {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
-  background: rgba(0, 0, 0, 0.25);
-  padding: 10px 12px;
-  border: 1px solid var(--c-border);
-}
-.group {
-  display: flex;
   align-items: center;
-  gap: 8px;
-  color: var(--c-white);
-  font-family: var(--font-mono);
+  gap: 16px;
+  background: var(--c-card);
+  border: 1px solid var(--c-border);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  border-radius: 8px;
+  padding: 16px 20px;
 }
-.group label {
-  color: var(--c-gray);
-  font-size: 11px;
-}
-.chips {
+
+.control-group {
   display: flex;
+  flex-direction: column;
   gap: 6px;
 }
-.chips button,
-.group select {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--c-border);
-  color: var(--c-white);
-  padding: 6px 10px;
-  font-family: var(--font-mono);
-  cursor: pointer;
-}
-.chips button.active {
-  background: var(--c-yellow);
-  color: #000;
+
+.control-group label {
+  font-size: 10px;
+  color: var(--c-gray);
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
+
+/* Segmented Control */
+.segmented-control {
+  display: flex;
+  background: var(--c-light-gray);
+  border-radius: 6px;
+  padding: 2px;
+  border: 1px solid var(--c-border);
+}
+
+.segment {
+  padding: 6px 14px;
+  font-size: 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--c-gray);
+  user-select: none;
+  font-weight: 500;
+}
+
+.segment:hover {
+  color: var(--c-black);
+  background: rgba(255, 230, 0, 0.1);
+}
+
+.segment.active {
+  background: var(--c-yellow);
+  color: var(--c-black);
+  font-weight: 700;
+  box-shadow: 0 2px 6px rgba(255, 230, 0, 0.3);
+}
+
+/* Custom Select */
+.custom-select-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.glass-select {
+  appearance: none;
+  background: var(--c-white);
+  border: 1px solid var(--c-border);
+  color: var(--c-black);
+  padding: 8px 32px 8px 12px;
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  min-width: 120px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.glass-select option {
+  background: var(--c-white);
+  color: var(--c-black);
+  padding: 8px;
+}
+
+.glass-select:hover {
+  border-color: rgba(0, 0, 0, 0.2);
+  background: #fafafa;
+}
+
+.glass-select:focus {
+  outline: none;
+  border-color: var(--c-yellow);
+  box-shadow: 0 0 0 3px rgba(255, 230, 0, 0.15);
+}
+
+.select-arrow {
+  position: absolute;
+  right: 10px;
+  font-size: 8px;
+  color: var(--c-gray);
+  pointer-events: none;
+}
+
+/* Search Box */
+.search-group {
+  margin-left: auto; /* Push to right */
+}
+
+.search-box {
+  display: flex;
+  align-items: center;
+  background: var(--c-white);
+  border: 1px solid var(--c-border);
+  border-radius: 20px;
+  padding: 2px 4px;
+  transition: all 0.2s;
+}
+
+.search-box:focus-within {
+  border-color: var(--c-yellow);
+  background: #fafafa;
+  box-shadow: 0 0 0 3px rgba(255, 230, 0, 0.15);
+}
+
+.glass-input {
+  background: transparent;
+  border: none;
+  color: var(--c-black);
+  padding: 8px 12px;
+  font-size: 12px;
+  width: 180px;
+  outline: none;
+}
+
+.glass-input::placeholder {
+  color: var(--c-gray);
+}
+
+.icon-btn {
+  background: none;
+  border: none;
+  color: var(--c-yellow);
+  cursor: pointer;
+  padding: 6px 10px;
+  font-size: 14px;
+  opacity: 0.8;
+  transition: opacity 0.2s;
+}
+
+.icon-btn:hover {
+  opacity: 1;
+}
+
+/* Layout adjustments */
 .layout {
   display: grid;
-  gap: 12px;
+  gap: 16px;
 }
 .layout.secondary {
   grid-template-columns: 2fr 1fr;
@@ -647,103 +981,108 @@ const granularityLabel = computed(() => {
 .layout.quaternary {
   grid-template-columns: repeat(2, 1fr);
 }
+
 .pane {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--c-card);
   border: 1px solid var(--c-border);
-  padding: 12px;
-  min-height: 120px;
+  border-radius: 8px;
+  padding: 20px;
+  transition: transform 0.2s, box-shadow 0.2s;
 }
+
+.pane:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  transform: translateY(-2px);
+}
+
 .map-pane {
-  min-height: 420px;
+  min-height: 480px;
+  border: 1px solid var(--c-border);
 }
+
 .stats-pane h3 {
-  margin: 0 0 8px;
-  color: var(--c-white);
+  margin: 0 0 16px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--c-black);
+  border-bottom: 2px solid var(--c-yellow);
+  padding-bottom: 8px;
 }
+
 .stat-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
 }
-.importance {
-  margin-top: 12px;
-}
-.importance h4 {
-  margin: 0 0 6px;
-  color: var(--c-white);
-  font-size: 13px;
-}
-.importance ul {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 6px;
-}
-.importance li {
-  display: flex;
-  justify-content: space-between;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--c-border);
-  padding: 6px 8px;
-  color: var(--c-white);
-  font-family: var(--font-mono);
-  font-size: 12px;
-}
-.importance .value {
-  color: var(--c-yellow);
-  font-weight: 600;
-}
-.chart {
-  width: 100%;
-  height: 260px;
-}
+
 .stat {
   display: flex;
-  justify-content: space-between;
-  padding: 8px;
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid var(--c-border);
-}
-.label {
-  color: var(--c-gray);
-  font-size: 11px;
-  font-family: var(--font-mono);
-}
-.value {
-  color: var(--c-white);
-  font-weight: 700;
-  font-family: var(--font-mono);
-}
-.value.pos {
-  color: #4caf50;
-}
-.value.neg {
-  color: #e53935;
-}
-.note {
-  color: var(--c-gray);
-  font-size: 11px;
-  margin-top: 6px;
-}
-.caption {
-  color: var(--c-gray);
-  font-size: 12px;
-  margin-top: 6px;
-}
-.mini-compare {
-  display: flex;
   flex-direction: column;
-  gap: 8px;
-  height: 100%;
+  padding: 12px;
+  background: rgba(255, 230, 0, 0.05);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 230, 0, 0.2);
 }
-.mini-compare h4 {
-  margin: 0;
-  color: var(--c-white);
+
+.stat .label {
+  font-size: 11px;
+  color: var(--c-gray);
+  margin-bottom: 4px;
+  text-transform: uppercase;
 }
+
+.stat .value {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--c-black);
+  font-family: var(--font-mono);
+}
+
+.note {
+  font-size: 11px;
+  color: var(--c-gray);
+  line-height: 1.5;
+  padding: 8px 12px;
+  background: rgba(255, 230, 0, 0.05);
+  border-radius: 4px;
+  border-left: 3px solid var(--c-yellow);
+}
+
+.mini-compare h4,
+.pane h4 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: var(--c-black);
+  font-weight: 600;
+}
+
 .mini-chart {
   flex: 1;
-  min-height: 180px;
+  min-height: 200px;
+}
+
+.chart {
+  width: 100%;
+  height: 300px;
+}
+
+.coord-display {
+  display: inline-block;
+  color: var(--c-gray);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--c-light-gray);
+  border: 1px solid var(--c-border);
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.caption {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--c-gray);
+  text-align: center;
+  font-style: italic;
 }
 </style>

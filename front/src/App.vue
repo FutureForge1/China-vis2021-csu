@@ -24,6 +24,9 @@
             <RouterLink to="/monthly" :class="{ active: isMonthly }"
               >月度分析补充</RouterLink
             >
+            <RouterLink to="/forecast" :class="{ active: isForecast }"
+              >预测实验</RouterLink
+            >
           </nav>
           <!-- <div class="view-controls">
             <div class="view-toggle">

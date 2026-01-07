@@ -3,16 +3,27 @@
     <div class="heading">
       <h2>{{ title }}</h2>
       <div class="actions">
-        <button v-if="currentLevel !== 'china'" class="back-btn" @click="goBack">BACK TO NATIONAL</button>
-        <span class="badge">{{ currentLevel === 'china' ? 'NATIONAL' : currentProvince }}</span>
+        <button
+          v-if="currentLevel !== 'china'"
+          class="back-btn"
+          @click="goBack"
+        >
+          BACK TO NATIONAL
+        </button>
+        <span class="badge">{{
+          currentLevel === "china" ? "NATIONAL" : currentProvince
+        }}</span>
       </div>
     </div>
     <div class="chart" v-if="mapReady">
-      <VChart ref="chartRef" :option="chartOption" autoresize @click="handleClick" />
+      <VChart
+        ref="chartRef"
+        :option="chartOption"
+        autoresize
+        @click="handleClick"
+      />
     </div>
-    <div v-else class="placeholder">
-      LOADING MAP DATA...
-    </div>
+    <div v-else class="placeholder">LOADING MAP DATA...</div>
   </div>
 </template>
 
@@ -48,14 +59,21 @@ let cityToProvinceMap = new Map();
 
 // Endfield Yellow Gradient
 const WIND_GRADIENT = [
-  "#ddd333", "#4d4500", "#665c00", "#807300", 
-  "#998a00", "#b2a100", "#ccb800", "#e6cf00", "#FFE600"
+  "#ddd333",
+  "#4d4500",
+  "#665c00",
+  "#807300",
+  "#998a00",
+  "#b2a100",
+  "#ccb800",
+  "#e6cf00",
+  "#FFE600",
 ];
 
 function getGradientColor(value, min, max) {
   if (max <= min) return WIND_GRADIENT[0];
   let t = (value - min) / (max - min);
-  t = Math.max(0, Math.min(1, t)); 
+  t = Math.max(0, Math.min(1, t));
   const index = Math.floor(t * (WIND_GRADIENT.length - 1));
   return WIND_GRADIENT[index];
 }
@@ -76,23 +94,33 @@ const dataStats = computed(() => {
     : props.data.map((d) => Number(d.value ?? 0));
   const min = values.length ? Math.min(...values) : 0;
   const max = values.length ? Math.max(...values) : 50;
-  
+
   // Strict Endfield Palette (Yellow Scale)
-  const palette = ["#1a1a1a", "#ddd333", "#665c00", "#998a00", "#ccb800", "#FFE600"];
+  const palette = [
+    "#1a1a1a",
+    "#ddd333",
+    "#665c00",
+    "#998a00",
+    "#ccb800",
+    "#FFE600",
+  ];
 
   return { min, max, palette, useScatter, useWind, useFlow, useHeatmap };
 });
 
 const getWindSpeedColor = (speed, minSpeed, maxSpeed) => {
   if (maxSpeed === minSpeed) return "#FFE600";
-  const normalized = Math.max(0, Math.min(1, (speed - minSpeed) / (maxSpeed - minSpeed)));
+  const normalized = Math.max(
+    0,
+    Math.min(1, (speed - minSpeed) / (maxSpeed - minSpeed))
+  );
   const colors = ["#ddd333", "#665c00", "#998a00", "#ccb800", "#FFE600"];
   const index = Math.floor(normalized * (colors.length - 1));
   return colors[Math.min(index, colors.length - 1)];
 };
 
 const getWindSpeedWidth = (speed, minSpeed, maxSpeed) => {
-  return 1.5; 
+  return 1.5;
 };
 
 const baseGeoConfig = computed(() => {
@@ -101,22 +129,22 @@ const baseGeoConfig = computed(() => {
     map: isChina ? "china" : "province_map",
     roam: true,
     scaleLimit: isChina ? { min: 1.2, max: 5 } : { min: 0.5, max: 20 },
-    emphasis: { 
-      label: { show: true, color: '#000' },
-      itemStyle: { areaColor: '#FFE600' } // Yellow on hover
+    emphasis: {
+      label: { show: true, color: "#000" },
+      itemStyle: { areaColor: "#FFE600" }, // Yellow on hover
     },
     label: {
       show: true,
-      color: "#666", 
+      color: "#666",
       fontSize: 10,
-      textShadowColor: '#fff',
-      textShadowBlur: 3
+      textShadowColor: "#fff",
+      textShadowBlur: 3,
     },
     itemStyle: {
-      borderColor: "#ddd", 
+      borderColor: "#ddd",
       borderWidth: 1,
-      areaColor: "#1a1a1a" // Dark background
-    }
+      areaColor: "#1a1a1a", // Dark background
+    },
   };
 
   if (isChina) {
@@ -128,75 +156,85 @@ const baseGeoConfig = computed(() => {
 });
 
 const chartOption = computed(() => {
-  const { min, max, palette, useScatter, useWind, useFlow, useHeatmap } = dataStats.value;
+  const { min, max, palette, useScatter, useWind, useFlow, useHeatmap } =
+    dataStats.value;
 
   return {
     backgroundColor: "transparent",
     tooltip: {
       show: true,
-      backgroundColor: 'rgba(0, 0, 0, 0.9)',
-      borderColor: '#FFE600',
+      backgroundColor: "rgba(0, 0, 0, 0.9)",
+      borderColor: "#FFE600",
       borderWidth: 1,
-      textStyle: { color: '#FFE600', fontFamily: 'JetBrains Mono' },
-      formatter: function(params) {
+      textStyle: { color: "#FFE600", fontFamily: "JetBrains Mono" },
+      formatter: function (params) {
         if (params.data && !isNaN(params.data.value)) {
-          const val = Array.isArray(params.data.value) ? params.data.value[2] : params.data.value;
-          return `<div style="font-family: 'Oswald'; font-weight: bold; color: #0a0a0a;">${params.name}</div>
+          const val = Array.isArray(params.data.value)
+            ? params.data.value[2]
+            : params.data.value;
+          return `<div style="font-family: 'Oswald'; font-weight: bold; color: #0a0a0a;">${
+            params.name
+          }</div>
                   <div style="font-family: 'JetBrains Mono'; font-size: 12px; color: #FFE600;">
                     ${props.metric.toUpperCase()}: ${Number(val).toFixed(2)}
                   </div>`;
         }
         return params.name;
-      }
+      },
     },
     geo: {
       ...baseGeoConfig.value,
       silent: false,
-      zlevel: 10
+      zlevel: 10,
     },
-    animation: false, 
-    visualMap: useWind || useFlow
-      ? undefined
-      : {
-          min,
-          max: max === min ? min + 1 : max,
-          calculable: true,
-          orient: 'horizontal',
-          left: 'center',
-          bottom: 10,
-          inRange: { color: palette },
-          textStyle: { color: '#666', fontFamily: 'JetBrains Mono' } 
-        },
+    animation: false,
+    visualMap:
+      useWind || useFlow
+        ? undefined
+        : {
+            min,
+            max: max === min ? min + 1 : max,
+            calculable: true,
+            orient: "horizontal",
+            left: "center",
+            bottom: 10,
+            inRange: { color: palette },
+            textStyle: { color: "#666", fontFamily: "JetBrains Mono" },
+          },
     series: [
       {
         name: props.metric,
         type: "map",
         geoIndex: 0,
-        data: props.data.map(item => ({
+        data: props.data.map((item) => ({
           name: item.name,
-          value: item.value
-        }))
-      },
-      ...(useScatter && currentLevel.value === 'china' ? [{
-        type: 'scatter',
-        coordinateSystem: 'geo',
-        data: props.scatter.map(s => ({
-          name: s.name,
-          value: [...s.coord, s.value]
+          value: item.value,
         })),
-        symbolSize: (val) => {
-          const v = val[2];
-          const t = (v - min) / (max - min || 1);
-          return 4 + t * 8;
-        },
-        itemStyle: { 
-          color: palette[palette.length - 1], 
-          opacity: 0.8,
-        },
-        silent: true,
-        zlevel: 11
-      }] : [])
-    ]
+      },
+      ...(useScatter && currentLevel.value === "china"
+        ? [
+            {
+              type: "scatter",
+              coordinateSystem: "geo",
+              data: props.scatter.map((s) => ({
+                name: s.name,
+                value: [...s.coord, s.value],
+              })),
+              symbolSize: (val) => {
+                const v = val[2];
+                const t = (v - min) / (max - min || 1);
+                return 4 + t * 8;
+              },
+              itemStyle: {
+                color: palette[palette.length - 1],
+                opacity: 0.8,
+              },
+              silent: true,
+              zlevel: 11,
+            },
+          ]
+        : []),
+    ],
   };
 });
 
@@ -205,13 +243,13 @@ async function loadMap() {
     const res = await fetch("/china.json");
     const geo = await res.json();
     registerMap("china", geo);
-    
+
     const cityRes = await fetch("/china_city.json");
     allCitiesGeoJson = await cityRes.json();
-    
+
     const regionRes = await fetch("/region.json");
     const regions = await regionRes.json();
-    regions.forEach(r => {
+    regions.forEach((r) => {
       cityToProvinceMap.set(r.city, r.province);
       cityToProvinceMap.set(r.county, r.province);
     });
@@ -224,7 +262,10 @@ async function loadMap() {
 
 function handleClick(params) {
   // 如果点击的是地图区域（componentType === 'geo' 或 'series' && seriesType === 'map'）
-  if (params.componentType === 'geo' || (params.componentType === 'series' && params.seriesType === 'map')) {
+  if (
+    params.componentType === "geo" ||
+    (params.componentType === "series" && params.seriesType === "map")
+  ) {
     if (currentLevel.value === "china" && params.name) {
       drillDown(params.name);
     }
@@ -234,29 +275,33 @@ function handleClick(params) {
 
 async function drillDown(provinceName) {
   if (!allCitiesGeoJson) return;
-  
-  const provinceCities = allCitiesGeoJson.features.filter(f => {
+
+  const provinceCities = allCitiesGeoJson.features.filter((f) => {
     const cityName = f.properties.name;
-    return cityToProvinceMap.get(cityName) === provinceName || cityName.includes(provinceName.slice(0, 2));
+    return (
+      cityToProvinceMap.get(cityName) === provinceName ||
+      cityName.includes(provinceName.slice(0, 2))
+    );
   });
 
   if (provinceCities.length === 0) return;
 
   const geoJson = {
     type: "FeatureCollection",
-    features: provinceCities
+    features: provinceCities,
   };
 
   registerMap("province_map", geoJson);
   currentLevel.value = "province";
   currentProvince.value = provinceName;
-  
+
   await nextTick();
 }
 
 function goBack() {
   currentLevel.value = "china";
   currentProvince.value = "";
+  emit("select", ""); // Reset selection in parent
 }
 
 onMounted(() => {
@@ -305,8 +350,8 @@ h2 {
 
 .back-btn {
   background: transparent;
-  border: 1px solid #FFE600;
-  color: #FFE600;
+  border: 1px solid #ffe600;
+  color: #ffe600;
   font-family: "JetBrains Mono", monospace;
   font-size: 10px;
   padding: 2px 8px;
@@ -315,7 +360,7 @@ h2 {
 }
 
 .back-btn:hover {
-  background: #FFE600;
+  background: #ffe600;
   color: #000;
 }
 

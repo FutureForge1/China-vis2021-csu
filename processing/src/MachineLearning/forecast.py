@@ -1,19 +1,19 @@
 import argparse
 import json
 import math
-import os
 from pathlib import Path
 from typing import Dict, List, Tuple
 
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
+from tqdm.auto import tqdm
 
 # ------------------------------
-# Data loading & normalization
+# 数据加载和标准化
 # ------------------------------
 
-# Features follow frontend naming; keep order stable for tensors
+# 功能遵循前端命名；保持张量的顺序稳定
 FEATURES = [
     "pm25",
     "pm10",
@@ -34,6 +34,27 @@ def load_json(path: Path):
         return json.load(f)
 
 
+def load_region_mapping(region_path: Path) -> Dict[str, Tuple[float, float]]:
+    """加载region.json，构建 province|city -> (longitude, latitude) 映射。
+    
+    对于同一个城市有多个区县记录的情况，取第一个区县的经纬度作为城市代表坐标。
+    """
+    regions = load_json(region_path)
+    mapping: Dict[str, Tuple[float, float]] = {}
+    for item in regions:
+        province = item.get("province", "")
+        city = item.get("city", "")
+        lon_val = to_float(item.get("longitude", "nan"))
+        lat_val = to_float(item.get("latitude", "nan"))
+        if math.isnan(lon_val) or math.isnan(lat_val):
+            continue  # 跳过缺失或无效经纬度
+        key = f"{province}|{city}"
+        # 只保留第一个匹配的经纬度（通常是市级或第一个区县）
+        if key not in mapping:
+            mapping[key] = (lon_val, lat_val)
+    return mapping
+
+
 def to_float(val):
     try:
         return float(val)
@@ -41,8 +62,20 @@ def to_float(val):
         return float("nan")
 
 
-def load_city_timeseries(data_root: Path, years: List[str]) -> Dict[str, List[Tuple[str, List[float]]]]:
+def load_city_timeseries(data_root: Path, years: List[str], geo_mapping: Dict[str, Tuple[float, float]]) -> Dict[str, List[Tuple[str, List[float]]]]:
+    """加载城市时序数据，特征向量中包含经纬度信息。
+    
+    Args:
+        data_root: 数据根目录
+        years: 年份列表
+        geo_mapping: province|city -> (longitude, latitude) 映射表
+    
+    Returns:
+        城市时序字典，每个样本特征向量末尾包含经纬度
+    """
     series: Dict[str, List[Tuple[str, List[float]]]] = {}
+    # 使用全部11个特征
+    base_features = FEATURES 
     for year in years:
         days_idx = load_json(data_root / year / "index.json")
         for day in days_idx.get("days", []):
@@ -53,7 +86,11 @@ def load_city_timeseries(data_root: Path, years: List[str]) -> Dict[str, List[Tu
             rows = load_json(day_path)
             for row in rows:
                 city_key = f"{row.get('province','')}|{row.get('city','')}"
-                vec = [to_float(row.get(feat, "nan")) for feat in FEATURES]
+                # 构建基础特征向量
+                vec = [to_float(row.get(feat, "nan")) for feat in base_features]
+                # 从映射表获取经纬度并附加
+                lon, lat = geo_mapping.get(city_key, (0.0, 0.0))
+                vec.extend([lon, lat])
                 if city_key not in series:
                     series[city_key] = []
                 series[city_key].append((day, vec))
@@ -84,7 +121,7 @@ def denormalize(vec, mean, std):
 
 
 # ------------------------------
-# Dataset & model
+# 数据集和模型
 # ------------------------------
 class SeqDataset(Dataset):
     def __init__(self, series: Dict[str, List[Tuple[str, List[float]]]], mean, std, window: int = 30, horizon: int = 1):
@@ -93,9 +130,15 @@ class SeqDataset(Dataset):
             if len(items) <= window:
                 continue
             for i in range(len(items) - window - horizon + 1):
-                seq = [normalize(items[j][1], mean, std) for j in range(i, i + window)]
-                tgt = normalize(items[i + window][1], mean, std)
-                self.samples.append((torch.tensor(seq, dtype=torch.float32), torch.tensor(tgt, dtype=torch.float32)))
+                # 分离特征和上下文
+                seq = [normalize(items[j][1][:11], mean[:11], std[:11]) for j in range(i, i + window)]
+                context = items[i][1][11:]  # 经纬度（静态，不需要归一化）
+                tgt = normalize(items[i + window][1][:11], mean[:11], std[:11])
+                self.samples.append((
+                    torch.tensor(seq, dtype=torch.float32),
+                    torch.tensor(context, dtype=torch.float32),
+                    torch.tensor(tgt, dtype=torch.float32)
+                ))
 
     def __len__(self):
         return len(self.samples)
@@ -105,19 +148,25 @@ class SeqDataset(Dataset):
 
 
 class GRUForecaster(nn.Module):
-    def __init__(self, input_size: int, hidden: int = 128, layers: int = 2, dropout: float = 0.1):
+    def __init__(self, feature_size: int = 11, context_size: int = 2, hidden: int = 128, layers: int = 2, dropout: float = 0.1):
         super().__init__()
-        self.gru = nn.GRU(input_size, hidden, num_layers=layers, batch_first=True, dropout=dropout)
+        # GRU只处理时间序列特征（11维）
+        self.gru = nn.GRU(feature_size, hidden, num_layers=layers, batch_first=True, dropout=dropout)
+        # 融合经纬度作为静态上下文
+        self.context_proj = nn.Linear(context_size, hidden)
         self.head = nn.Sequential(
             nn.LayerNorm(hidden),
-            nn.Linear(hidden, input_size),
+            nn.Linear(hidden, feature_size)  # 只输出11维
         )
-
-    def forward(self, x):
-        # x: [B, T, F]
-        out, _ = self.gru(x)
+    
+    def forward(self, x_seq, x_context):
+        # x_seq: [B, 30, 11]  时间序列特征
+        # x_context: [B, 2]   经纬度
+        out, _ = self.gru(x_seq)
         last = out[:, -1, :]
-        pred = self.head(last)
+        context_emb = self.context_proj(x_context)
+        combined = last + context_emb  # 融合位置信息
+        pred = self.head(combined)  # 只输出11维
         return pred
 
 
@@ -130,15 +179,17 @@ def train(model, loader, device, epochs=8, lr=1e-3):
     model.train()
     for epoch in range(epochs):
         total = 0.0
-        for seq, tgt in loader:
-            seq, tgt = seq.to(device), tgt.to(device)
+        progress = tqdm(loader, desc=f"Epoch {epoch+1}/{epochs}", leave=False)
+        for seq, context, tgt in progress:
+            seq, context, tgt = seq.to(device), context.to(device), tgt.to(device)
             optim.zero_grad()
-            pred = model(seq)
+            pred = model(seq, context)
             loss = loss_fn(pred, tgt)
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optim.step()
             total += loss.item() * seq.size(0)
+            progress.set_postfix(batch_loss=f"{loss.item():.4f}")
         avg = total / len(loader.dataset)
         print(f"[Epoch {epoch+1}] train L1={avg:.4f}")
 
@@ -149,11 +200,11 @@ def estimate_mae(model, loader, device, max_batches: int = 16) -> float:
     total_loss = 0.0
     total_count = 0
     model.eval()
-    for batch_idx, (seq, tgt) in enumerate(loader):
+    for batch_idx, (seq, context, tgt) in enumerate(loader):
         if batch_idx >= max_batches:
             break
-        seq, tgt = seq.to(device), tgt.to(device)
-        pred = model(seq)
+        seq, context, tgt = seq.to(device), context.to(device), tgt.to(device)
+        pred = model(seq, context)
         total_loss += loss_fn(pred, tgt).item()
         total_count += tgt.numel() / tgt.size(-1)  # count by samples
     return total_loss / max(total_count, 1)
@@ -161,12 +212,12 @@ def estimate_mae(model, loader, device, max_batches: int = 16) -> float:
 
 @torch.no_grad()
 def compute_feature_importance(model, dataset: Dataset, device, batches: int = 8, seed: int = 42):
-    """Permutation importance on a held-out slice.
+    """保留切片上的排列重要性。
 
-    Steps:
-      1) Compute baseline MAE on a small subset.
-      2) Shuffle one feature across the batch/time dimension and measure MAE increase.
-      3) Higher delta_mae => more important feature.
+    步骤：
+      1) 计算一个小子集的基线 MAE。
+      2) 在批次/时间维度上随机排列一项特征并测量 MAE 增加。
+      3) 更高的 delta_mae => 更重要的特征。
     """
 
     torch.manual_seed(seed)
@@ -176,23 +227,37 @@ def compute_feature_importance(model, dataset: Dataset, device, batches: int = 8
     print(f"[FeatureImportance] baseline MAE={base_mae:.4f}")
 
     results = []
-    for feat_idx, name in enumerate(FEATURES):
+    # 评估所有输入特征的重要性（11个时序特征 + 2个上下文特征）
+    all_features = FEATURES + ["longitude", "latitude"]
+    for feat_idx, name in enumerate(all_features):
         loss_fn = nn.L1Loss(reduction="sum")
         total_loss = 0.0
         total_count = 0
-        for batch_idx, (seq, tgt) in enumerate(loader):
+        for batch_idx, (seq, context, tgt) in enumerate(loader):
             if batch_idx >= batches:
                 break
-            seq, tgt = seq.to(device), tgt.to(device)
+            seq, context, tgt = seq.to(device), context.to(device), tgt.to(device)
 
-            # permute this feature across batch and time to break its signal
-            shuffled = seq[:, :, feat_idx].flatten()
-            perm = torch.randperm(shuffled.numel(), device=device)
-            shuffled = shuffled[perm].view_as(seq[:, :, feat_idx])
-            perturbed = seq.clone()
-            perturbed[:, :, feat_idx] = shuffled
+            # 判断是时序特征还是上下文特征
+            if feat_idx < len(FEATURES):
+                # 时序特征：在时间和batch维度上打乱
+                shuffled = seq[:, :, feat_idx].flatten()
+                perm = torch.randperm(shuffled.numel(), device=device)
+                shuffled = shuffled[perm].view_as(seq[:, :, feat_idx])
+                perturbed_seq = seq.clone()
+                perturbed_seq[:, :, feat_idx] = shuffled
+                perturbed_context = context
+            else:
+                # 上下文特征（经纬度）：在batch维度上打乱
+                context_idx = feat_idx - len(FEATURES)
+                shuffled = context[:, context_idx].flatten()
+                perm = torch.randperm(shuffled.numel(), device=device)
+                shuffled = shuffled[perm]
+                perturbed_context = context.clone()
+                perturbed_context[:, context_idx] = shuffled
+                perturbed_seq = seq
 
-            pred = model(perturbed)
+            pred = model(perturbed_seq, perturbed_context)
             total_loss += loss_fn(pred, tgt).item()
             total_count += tgt.numel() / tgt.size(-1)
 
@@ -213,14 +278,17 @@ def autoregressive_predict(model, seed_series: Dict[str, List[Tuple[str, List[fl
     model.eval()
     preds: Dict[str, List[Tuple[str, List[float]]]] = {}
     for city, items in seed_series.items():
-        buffer = [normalize(vec, mean, std) for _, vec in items[-window:]]
+        # 分离特征和上下文
+        buffer = [normalize(vec[:11], mean[:11], std[:11]) for _, vec in items[-window:]]
+        context = items[-1][1][11:]  # 使用城市的经纬度（静态）
         if len(buffer) < window:
             continue
         for day in predict_days:
-            x = torch.tensor([buffer[-window:]], dtype=torch.float32, device=device)
+            x_seq = torch.tensor([buffer[-window:]], dtype=torch.float32, device=device)
+            x_context = torch.tensor([context], dtype=torch.float32, device=device)
             with torch.no_grad():
-                y = model(x).squeeze(0).cpu().tolist()
-            denorm = denormalize(y, mean, std)
+                y = model(x_seq, x_context).squeeze(0).cpu().tolist()
+            denorm = denormalize(y, mean[:11], std[:11])
             if city not in preds:
                 preds[city] = []
             preds[city].append((day, denorm))
@@ -237,45 +305,62 @@ def teacher_forced_predict(model, actual_series: Dict[str, List[Tuple[str, List[
 
     model.eval()
     preds: Dict[str, List[Tuple[str, List[float]]]] = {}
-    for city, items in actual_series.items():
+    for city, items in tqdm(actual_series.items(), desc="Teacher predict cities", leave=False):
         if len(items) <= window:
             continue
         items_sorted = sorted(items, key=lambda x: x[0])
         for idx in range(window, len(items_sorted)):
             # 用前 window 天预测第 idx 天
-            window_slice = [normalize(vec, mean, std) for _, vec in items_sorted[idx - window : idx]]
+            window_slice = [normalize(vec[:11], mean[:11], std[:11]) for _, vec in items_sorted[idx - window : idx]]
             target_day = items_sorted[idx][0]
-            x = torch.tensor([window_slice], dtype=torch.float32, device=device)
+            # 提取经纬度上下文（静态，使用当前城市的）
+            context = items_sorted[idx][1][11:]  # [lon, lat]
+            x_seq = torch.tensor([window_slice], dtype=torch.float32, device=device)
+            x_context = torch.tensor([context], dtype=torch.float32, device=device)
             with torch.no_grad():
-                y = model(x).squeeze(0).cpu().tolist()
-            denorm = denormalize(y, mean, std)
+                y = model(x_seq, x_context).squeeze(0).cpu().tolist()
+            denorm = denormalize(y, mean[:11], std[:11])
             preds.setdefault(city, []).append((target_day, denorm))
     return preds
 
 
 def save_predictions(preds: Dict[str, List[Tuple[str, List[float]]]], out_root: Path):
+    """保存预测结果，仅保存污染和气象特征（不含经纬度，因经纬度是城市静态属性）。"""
     out_root.mkdir(parents=True, exist_ok=True)
+    output_features = FEATURES
+    
+    # 先按日期分组所有城市的预测数据
+    day_data: Dict[str, List[dict]] = {}
     for city_key, items in preds.items():
         province, city = city_key.split("|")
         for day, vec in items:
-            y, m, d = day.split("-")
-            day_dir = out_root / y / m / d
-            day_dir.mkdir(parents=True, exist_ok=True)
+            # 过滤 NaN 值
+            vals = {}
+            for i, feat in enumerate(output_features):
+                if i < len(vec):
+                    v = vec[i]
+                    if not math.isnan(v):
+                        vals[feat] = float(v)
+            
             payload = {
                 "province": province,
                 "city": city,
-                **{feat: float(val) for feat, val in zip(FEATURES, vec)},
+                **vals
             }
-            out_file = day_dir / f"{y}{m}{d}.json"
-            if out_file.exists():
-                existing = load_json(out_file)
-                if isinstance(existing, list):
-                    existing.append(payload)
-                    with out_file.open("w", encoding="utf-8") as f:
-                        json.dump(existing, f, ensure_ascii=False, indent=2)
-                    continue
-            with out_file.open("w", encoding="utf-8") as f:
-                json.dump([payload], f, ensure_ascii=False, indent=2)
+            
+            if day not in day_data:
+                day_data[day] = []
+            day_data[day].append(payload)
+    
+    # 然后一次性写入每个日期的所有城市数据
+    for day, payloads in tqdm(day_data.items(), desc="Saving predictions"):
+        y, m, d = day.split("-")
+        day_dir = out_root / y / m / d
+        day_dir.mkdir(parents=True, exist_ok=True)
+        out_file = day_dir / f"{y}{m}{d}.json"
+        
+        with out_file.open("w", encoding="utf-8") as f:
+            json.dump(payloads, f, ensure_ascii=False, indent=2)
 
 
 def save_feature_importance(results, out_root: Path):
@@ -287,7 +372,7 @@ def save_feature_importance(results, out_root: Path):
 
 
 def compute_mae(preds: Dict[str, List[Tuple[str, List[float]]]], actual: Dict[str, List[Tuple[str, List[float]]]]):
-    """Compute MAE per feature over all overlapping city-day pairs."""
+    """计算所有重叠城市日对中每个要素的 MAE。"""
 
     # Build lookup for actual
     actual_map: Dict[Tuple[str, str], List[float]] = {}
@@ -302,10 +387,15 @@ def compute_mae(preds: Dict[str, List[Tuple[str, List[float]]]], actual: Dict[st
             gt = actual_map.get((city, day))
             if not gt:
                 continue
-            for i, p in enumerate(pred_vec):
-                if math.isnan(p) or math.isnan(gt[i]):
+            # 仅计算 FEATURES 中定义的特征的 MAE，忽略经纬度（虽然它们在向量末尾）
+            for i in range(len(FEATURES)):
+                if i >= len(pred_vec) or i >= len(gt):
                     continue
-                total[i] += abs(p - gt[i])
+                p = pred_vec[i]
+                g = gt[i]
+                if math.isnan(p) or math.isnan(g):
+                    continue
+                total[i] += abs(p - g)
             count += 1
 
     if count == 0:
@@ -358,39 +448,59 @@ def main():
     train_years = args.train_years.split(",")
     predict_year = args.predict_year
 
+    # 加载地理映射（经纬度信息）
+    region_path = args.data_root.parent / "region.json"
+    if not region_path.exists():
+        print(f"Warning: {region_path} not found, using default (0,0) for all cities")
+        geo_mapping = {}
+    else:
+        print(f"Loading geo mapping from {region_path}")
+        geo_mapping = load_region_mapping(region_path)
+        print(f"Loaded {len(geo_mapping)} city coordinates")
+
     print(f"Loading training data: {train_years}")
-    train_series = load_city_timeseries(args.data_root, train_years)
+    train_series = load_city_timeseries(args.data_root, train_years, geo_mapping)
     mean, std = compute_norm_stats(train_series)
 
     dataset = SeqDataset(train_series, mean, std, window=args.window)
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, drop_last=True)
 
     device = torch.device(args.device)
-    model = GRUForecaster(input_size=len(FEATURES), hidden=args.hidden, layers=args.layers, dropout=args.dropout).to(device)
+    # 输入特征: FEATURES (11) 时间序列 + Longitude + Latitude (2) 静态上下文
+    feature_dim = len(FEATURES)
+    context_dim = 2
+    model = GRUForecaster(feature_size=feature_dim, context_size=context_dim, hidden=args.hidden, layers=args.layers, dropout=args.dropout).to(device)
     train(model, loader, device, epochs=args.epochs, lr=args.lr)
 
-    predict_series = load_city_timeseries(args.data_root, [predict_year])
+    predict_series = load_city_timeseries(args.data_root, [predict_year], geo_mapping)
 
+    print("Running predictions...")
     if args.prediction_mode == "teacher":
         preds = teacher_forced_predict(model, predict_series, mean, std, args.window, device)
     else:
-        seed_series = load_city_timeseries(args.data_root, train_years)
+        seed_series = load_city_timeseries(args.data_root, train_years, geo_mapping)
         predict_days = load_json(args.data_root / predict_year / "index.json").get("days", [])
         preds = autoregressive_predict(model, seed_series, mean, std, predict_days, args.window, device)
+    print("Predictions done. Saving...")
 
     out_root = args.out
     save_predictions(preds, out_root)
+    print("Predictions saved.")
 
-    # Feature importance (permutation)
+    # 特征重要性（排列）
+    print("Computing feature importance...")
     fi_results = compute_feature_importance(model, dataset, device, batches=args.importance_batches)
     save_feature_importance(fi_results, out_root)
+    print("Feature importance saved.")
 
-    # Metrics vs actual (only if predict year exists)
+    # 指标与实际（仅当预测年份存在时）
     if predict_series:
+        print("Computing metrics vs actual...")
         metrics = compute_mae(preds, predict_series)
         save_metrics(metrics, out_root)
+        print("Metrics saved.")
 
-    # Optional: save weights for downstream / serving
+    # 保存下游/服务的权重
     if args.save_weights:
         weights_path = out_root / args.weights_name
         torch.save(model.state_dict(), weights_path)

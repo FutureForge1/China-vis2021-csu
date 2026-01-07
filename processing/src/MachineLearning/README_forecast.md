@@ -11,7 +11,7 @@ conda create -n aqi-forecast python=3.10 -y
 conda activate aqi-forecast
 # Install PyTorch (GPU version, CUDA 12.1) using pip (faster than conda)
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-pip install numpy
+pip install numpy tqdm
 cd processing/src/MachineLearning
 python forecast.py --data-root ../../front/public/data --out ../../front/public/data/predictions
 ```
