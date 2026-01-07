@@ -6,8 +6,27 @@
     />
 
     <div class="toolbar glass-panel">
-      <!-- Mode Selection -->
+      <!-- View Mode Toggle -->
       <div class="control-group">
+        <label>视图模式</label>
+        <div class="segmented-control">
+          <div
+            v-for="v in [
+              { k: 'overview', t: '📊 多维概览' },
+              { k: 'detail', t: '🔍 详细分析' },
+            ]"
+            :key="v.k"
+            class="segment"
+            :class="{ active: viewMode === v.k }"
+            @click="viewMode = v.k"
+          >
+            {{ v.t }}
+          </div>
+        </div>
+      </div>
+
+      <!-- Mode Selection -->
+      <div class="control-group" v-show="viewMode === 'detail'">
         <label>显示模式</label>
         <div class="segmented-control">
           <div
@@ -27,7 +46,7 @@
       </div>
 
       <!-- Granularity -->
-      <div class="control-group">
+      <div class="control-group" v-show="viewMode === 'detail'">
         <label>时间粒度</label>
         <div class="segmented-control">
           <div
@@ -91,7 +110,7 @@
       </div>
 
       <!-- Metric Select -->
-      <div class="control-group">
+      <div class="control-group" v-show="viewMode === 'detail'">
         <label>指标</label>
         <div class="custom-select-wrapper">
           <select v-model="metric" class="glass-select">
@@ -120,71 +139,91 @@
       </div>
     </div>
 
-    <section class="layout secondary">
-      <div class="pane map-pane">
-        <MapPanel
-          :data="mapSeries"
-          :metric="metric"
-          :title="mapTitle"
-          :selected-name="selectedRegion"
-          @select="handleMapSelect"
-        />
-      </div>
-      <div class="pane stats-pane">
-        <h3>概要</h3>
-        <div class="stat-grid">
-          <div class="stat">
-            <span class="label">实况均值</span>
-            <span class="value">{{ actualAvg.toFixed(2) }}</span>
+    <!-- Overview Section -->
+    <ForecastOverview
+      v-if="viewMode === 'overview'"
+      :actual-data="allActualData"
+      :pred-data="allPredData"
+      :current-date="currentDate"
+      :region="region"
+      :region-label="regionLabel"
+    />
+
+    <!-- Detail Analysis Section -->
+    <div v-show="viewMode === 'detail'" class="detail-section">
+      <section class="layout secondary">
+        <div class="pane map-pane">
+          <MapPanel
+            :data="mapSeries"
+            :metric="metric"
+            :title="mapTitle"
+            :selected-name="selectedRegion"
+            @select="handleMapSelect"
+          />
+        </div>
+        <div class="pane stats-pane">
+          <h3>概要</h3>
+          <div class="stat-grid">
+            <div class="stat">
+              <span class="label">实况均值</span>
+              <span class="value">{{ actualAvg.toFixed(2) }}</span>
+            </div>
+            <div class="stat">
+              <span class="label">预测均值</span>
+              <span class="value">{{ predAvg.toFixed(2) }}</span>
+            </div>
+            <div class="stat" v-if="mode === 'compare'">
+              <span class="label">偏差(预测-实况)</span>
+              <span
+                class="value"
+                :class="{ pos: diffAvg >= 0, neg: diffAvg < 0 }"
+                >{{ diffAvg.toFixed(2) }}</span
+              >
+            </div>
           </div>
-          <div class="stat">
-            <span class="label">预测均值</span>
-            <span class="value">{{ predAvg.toFixed(2) }}</span>
+          <div class="note">
+            数据：2019全年。若预测文件缺失，将回退显示实况。
           </div>
-          <div class="stat" v-if="mode === 'compare'">
-            <span class="label">偏差(预测-实况)</span>
-            <span
-              class="value"
-              :class="{ pos: diffAvg >= 0, neg: diffAvg < 0 }"
-              >{{ diffAvg.toFixed(2) }}</span
-            >
+          <!-- 移除原有列表形式的重要性展示，改用 ECharts 渲染 -->
+        </div>
+      </section>
+
+      <section class="layout tertiary">
+        <div class="pane">
+          <TrendLine
+            :metric="metric"
+            :series="actualTrend"
+            :dates="trendDates"
+          />
+          <p class="caption">实况趋势 ({{ granularityLabel }})</p>
+        </div>
+        <div class="pane">
+          <TrendLine :metric="metric" :series="predTrend" :dates="trendDates" />
+          <p class="caption">预测趋势 ({{ granularityLabel }})</p>
+        </div>
+        <div class="pane">
+          <div class="mini-compare">
+            <h4>对比曲线</h4>
+            <div class="mini-chart" ref="compareRef"></div>
+            <div class="caption">灰=实况，黄=预测；跟随粒度/地区筛选</div>
           </div>
         </div>
-        <div class="note">数据：2019全年。若预测文件缺失，将回退显示实况。</div>
-        <!-- 移除原有列表形式的重要性展示，改用 ECharts 渲染 -->
-      </div>
-    </section>
+      </section>
 
-    <section class="layout tertiary">
-      <div class="pane">
-        <TrendLine :metric="metric" :series="actualTrend" :dates="trendDates" />
-        <p class="caption">实况趋势 ({{ granularityLabel }})</p>
-      </div>
-      <div class="pane">
-        <TrendLine :metric="metric" :series="predTrend" :dates="trendDates" />
-        <p class="caption">预测趋势 ({{ granularityLabel }})</p>
-      </div>
-      <div class="pane">
-        <div class="mini-compare">
-          <h4>对比曲线</h4>
-          <div class="mini-chart" ref="compareRef"></div>
-          <div class="caption">灰=实况，黄=预测；跟随粒度/地区筛选</div>
+      <section class="layout quaternary">
+        <div class="pane">
+          <h4>月度预测 vs 实况</h4>
+          <div class="chart" ref="monthlyRef"></div>
+          <p class="caption">按月均值对比，当前指标与地区</p>
         </div>
-      </div>
-    </section>
-
-    <section class="layout quaternary">
-      <div class="pane">
-        <h4>月度预测 vs 实况</h4>
-        <div class="chart" ref="monthlyRef"></div>
-        <p class="caption">按月均值对比，当前指标与地区</p>
-      </div>
-      <div class="pane">
-        <h4>特征权重 / 误差</h4>
-        <div class="chart" ref="featureRef"></div>
-        <p class="caption">重要性取自ΔMAE归一化，MAE来自metrics_summary</p>
-      </div>
-    </section>
+        <div class="pane">
+          <h4>特征权重 / 误差</h4>
+          <div class="chart" ref="featureRef"></div>
+          <p class="caption">重要性取自ΔMAE归一化，MAE来自metrics_summary</p>
+        </div>
+      </section>
+    </div>
+    <!-- End Detail Section -->
   </div>
 </template>
 
@@ -199,10 +238,12 @@ import {
   watch,
 } from "vue";
 import { loadRegionIndex } from "../utils/dataLoader";
+import ForecastOverview from "./ForecastOverview.vue";
 import MapPanel from "./MapPanel.vue";
 import SectionHeading from "./SectionHeading.vue";
 import TrendLine from "./TrendLine.vue";
 
+const viewMode = ref("overview"); // 新增：视图模式切换
 const metric = ref("pm25");
 const mode = ref("pred");
 const currentDate = ref("2019-01-01");
@@ -545,6 +586,32 @@ const predAvg = computed(() => {
 });
 
 const diffAvg = computed(() => predAvg.value - actualAvg.value);
+
+// 概览模式需要的全部数据
+const allActualData = computed(() => {
+  const result = [];
+  for (const [_, data] of actualCache.value) {
+    if (Array.isArray(data)) {
+      result.push(...data.filter((r) => matchesRegion(r, region.value)));
+    }
+  }
+  return result;
+});
+
+const allPredData = computed(() => {
+  const result = [];
+  for (const [_, data] of predCache.value) {
+    if (Array.isArray(data)) {
+      result.push(...data.filter((r) => matchesRegion(r, region.value)));
+    }
+  }
+  return result;
+});
+
+const regionLabel = computed(() => {
+  const opt = regionOptions.value.find((o) => o.value === region.value);
+  return opt ? opt.label : "全国";
+});
 
 function handleMapSelect(name) {
   if (!name) {
