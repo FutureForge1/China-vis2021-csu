@@ -472,6 +472,10 @@
         </section>
       </template>
 
+      <template v-else-if="isForecast">
+        <ForecastPage />
+      </template>
+
       <template v-else-if="isTypes">
         <SectionHeading
           badge="TYPE ANALYSIS"
@@ -623,6 +627,7 @@ import CityStackedPie from "./components/CityStackedPie.vue";
 import CityTypeRibbon from "./components/CityTypeRibbon.vue";
 import ControlPanel from "./components/ControlPanel.vue";
 import CorrHeatmap from "./components/CorrHeatmap.vue";
+import ForecastPage from "./components/ForecastPage.vue";
 import LevelBar from "./components/LevelBar.vue";
 import MapPanel from "./components/MapPanel.vue";
 import MonthlyRing from "./components/MonthlyRing.vue";
@@ -711,6 +716,7 @@ const isTypes = computed(() => route.name === "types");
 const isTrends = computed(() => route.name === "trends");
 const isMonthly = computed(() => route.name === "monthly");
 const isYearly = computed(() => route.name === "yearly");
+const isForecast = computed(() => route.name === "forecast");
 
 // Update viewMode based on route
 watch(
