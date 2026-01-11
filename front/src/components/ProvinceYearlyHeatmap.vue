@@ -3,6 +3,18 @@
     <div class="heading">
       <h3>PROVINCE YEARLY HEATMAP</h3>
       <span class="sub">{{ metric.toUpperCase() }} · {{ year }}</span>
+      <div class="filter-controls">
+        <select v-model="selectedRegion" class="region-select">
+          <option value="all">全部区域</option>
+          <option value="north">华北地区</option>
+          <option value="northeast">东北地区</option>
+          <option value="east">华东地区</option>
+          <option value="central">华中地区</option>
+          <option value="south">华南地区</option>
+          <option value="southwest">西南地区</option>
+          <option value="northwest">西北地区</option>
+        </select>
+      </div>
     </div>
     <div ref="chartEl" class="chart"></div>
   </div>
@@ -21,6 +33,23 @@ const props = defineProps({
 const chartEl = ref(null);
 let chart = null;
 
+// 区域筛选
+const selectedRegion = ref('all');
+
+// 无效省份列表（需要过滤）
+const invalidProvinces = ['未知省', 'Unknown', ''];
+
+// 区域分组
+const regionGroups = {
+  north: ['北京市', '天津市', '河北省', '山西省', '内蒙古自治区'],
+  northeast: ['辽宁省', '吉林省', '黑龙江省'],
+  east: ['上海市', '江苏省', '浙江省', '安徽省', '福建省', '江西省', '山东省'],
+  central: ['河南省', '湖北省', '湖南省'],
+  south: ['广东省', '广西壮族自治区', '海南省', '香港特别行政区', '澳门特别行政区'],
+  southwest: ['重庆市', '四川省', '贵州省', '云南省', '西藏自治区'],
+  northwest: ['陕西省', '甘肃省', '青海省', '宁夏回族自治区', '新疆维吾尔自治区']
+};
+
 // 构建热力图数据
 const heatmapData = computed(() => {
   if (!props.monthlyData || props.monthlyData.length === 0) {
@@ -30,12 +59,22 @@ const heatmapData = computed(() => {
   const metricField = `${props.metric}_mean`;
   const months = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
   
-  // 收集所有省份
+  // 收集所有省份，同时过滤无效省份
   const provinceSet = new Set();
   props.monthlyData.forEach(monthEntry => {
     if (monthEntry.data && Array.isArray(monthEntry.data)) {
       monthEntry.data.forEach(row => {
-        if (row.province) provinceSet.add(row.province);
+        if (row.province && !invalidProvinces.includes(row.province)) {
+          // 应用区域筛选
+          if (selectedRegion.value === 'all') {
+            provinceSet.add(row.province);
+          } else {
+            const regionProvinces = regionGroups[selectedRegion.value] || [];
+            if (regionProvinces.includes(row.province)) {
+              provinceSet.add(row.province);
+            }
+          }
+        }
       });
     }
   });
@@ -190,7 +229,7 @@ function handleResize() {
   chart?.resize();
 }
 
-watch([() => props.monthlyData, () => props.metric], renderChart, { deep: true });
+watch([() => props.monthlyData, () => props.metric, selectedRegion], renderChart, { deep: true });
 
 onMounted(() => {
   renderChart();
@@ -213,10 +252,37 @@ onUnmounted(() => {
 
 .heading {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  align-items: center;
+  gap: 12px;
   border-bottom: 1px solid #ddd;
-  padding-bottom: 4px;
+  padding-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.filter-controls {
+  margin-left: auto;
+}
+
+.region-select {
+  padding: 4px 8px;
+  font-size: 11px;
+  font-family: "JetBrains Mono", monospace;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: #fff;
+  color: #333;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.region-select:hover {
+  border-color: #FFE600;
+}
+
+.region-select:focus {
+  outline: none;
+  border-color: #FFE600;
+  box-shadow: 0 0 0 2px rgba(255, 230, 0, 0.2);
 }
 
 h3 {
@@ -238,7 +304,7 @@ h3 {
 
 .chart {
   flex: 1;
-  min-height: 400px;
+  min-height: 600px;
   width: 100%;
 }
 </style>
