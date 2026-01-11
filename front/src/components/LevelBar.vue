@@ -2,7 +2,7 @@
   <div class="wrap">
     <div class="heading">
       <h3>POLLUTION LEVELS</h3>
-      <span class="sub">DAILY COUNT</span>
+      <span class="sub">{{ scopeLabel }}</span>
     </div>
     <VChart :option="option" class="chart" />
   </div>
@@ -13,6 +13,16 @@ import { computed } from "vue";
 
 const props = defineProps({
   levels: { type: Array, default: () => [] }, // [{level, value}]
+  scope: { type: String, default: "national" },
+});
+
+const scopeLabel = computed(() => {
+  const map = {
+    national: "NATIONAL · DAILY COUNT",
+    province: "PROVINCE · DAILY COUNT",
+  };
+  const key = (props.scope || "national").toLowerCase();
+  return map[key] || `${key.toUpperCase()} · DAILY COUNT`;
 });
 
 const option = computed(() => ({
@@ -25,12 +35,12 @@ const option = computed(() => ({
     textStyle: {
       color: "#0a0a0a",
       fontFamily: "JetBrains Mono",
-      fontSize: 12
+      fontSize: 12,
     },
     formatter: (p) => {
       return `<div style="border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-bottom: 4px; color: #FFE600; font-weight: bold;">${p.name}</div>
               <div style="display: flex; justify-content: space-between; gap: 12px;"><span>COUNT:</span><span style="font-weight: bold; color: #0a0a0a;">${p.value}</span></div>`;
-    }
+    },
   },
   grid: { top: 10, left: 50, right: 30, bottom: 80, containLabel: true },
   xAxis: {
@@ -39,14 +49,14 @@ const option = computed(() => ({
     axisLabel: { color: "#666", fontFamily: "JetBrains Mono", fontSize: 10 },
     axisLine: { lineStyle: { color: "#ddd" } },
     axisTick: { show: false },
-    splitLine: { show: false }
+    splitLine: { show: false },
   },
   yAxis: {
     type: "value",
     axisLabel: { color: "#666", fontFamily: "JetBrains Mono", fontSize: 10 },
     splitLine: { lineStyle: { color: "rgba(0,0,0,0.05)" } },
     axisLine: { lineStyle: { color: "#ddd" } },
-    axisTick: { show: false }
+    axisTick: { show: false },
   },
   series: [
     {
@@ -62,7 +72,14 @@ const option = computed(() => ({
       itemStyle: {
         color: (p) => {
           // Endfield Yellow Scale (Dark -> Bright)
-          const palette = ["#ddd333", "#4d4500", "#665c00", "#998a00", "#ccb800", "#FFE600"];
+          const palette = [
+            "#ddd333",
+            "#4d4500",
+            "#665c00",
+            "#998a00",
+            "#ccb800",
+            "#FFE600",
+          ];
           return {
             type: "linear",
             x: 0,
@@ -77,7 +94,7 @@ const option = computed(() => ({
         },
         borderRadius: 0,
         borderColor: "#000",
-        borderWidth: 1
+        borderWidth: 1,
       },
     },
   ],
@@ -114,7 +131,7 @@ h3 {
 
 .sub {
   color: #000;
-  background: #FFE600;
+  background: #ffe600;
   padding: 2px 6px;
   font-size: 11px;
   font-weight: bold;

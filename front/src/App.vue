@@ -144,7 +144,7 @@
               />
             </div>
             <div class="pane side-pane">
-              <LevelBar :levels="levelStats" />
+              <LevelBar :levels="scopedLevelStats" :scope="scopeLevel" />
               <TrendLine
                 class="mt"
                 :metric="metric"
@@ -231,6 +231,7 @@
             :available-years="availableYears"
             :metric="monthViewMetric"
             :selected-region="selectedRegion"
+            :scope-level="scopeLevel"
             @update:region="handleMapSelect"
             @select-month="handleMonthSelect"
             @update:metric="monthViewMetric = $event"
@@ -410,6 +411,7 @@
           :available-years="availableYears"
           :metric="monthViewMetric"
           :selected-region="selectedRegion"
+          :scope-level="scopeLevel"
           @update:region="handleMapSelect"
           @select-month="handleMonthSelect"
           @update:metric="monthViewMetric = $event"
@@ -586,7 +588,6 @@ import CityTypeRibbon from "./components/CityTypeRibbon.vue";
 import ControlPanel from "./components/ControlPanel.vue";
 import CorrHeatmap from "./components/CorrHeatmap.vue";
 import ForecastPage from "./components/ForecastPage.vue";
-import IcicleChart from "./components/IcicleChart.vue";
 import LevelBar from "./components/LevelBar.vue";
 import MapPanel from "./components/MapPanel.vue";
 import MonthlyRing from "./components/MonthlyRing.vue";
@@ -594,7 +595,6 @@ import MonthView from "./components/MonthView.vue";
 import MultiYearRing from "./components/MultiYearRing.vue";
 import ParallelAQI from "./components/ParallelAQI.vue";
 import ProvinceDimensionChart from "./components/ProvinceDimensionChart.vue";
-import ProvinceRadarChart from "./components/ProvinceRadarChart.vue";
 import RadialPollutant from "./components/RadialPollutant.vue";
 import SeasonalLevelStack from "./components/SeasonalLevelStack.vue";
 import SectionHeading from "./components/SectionHeading.vue";
@@ -668,6 +668,7 @@ const yearAQIRainData = ref({ years: [], levels: [], data: [] });
 // Moved state variables to top to avoid ReferenceError
 const mapMode = ref("pollution"); // pollution | weather | type
 const selectedRegion = ref("");
+const scopeLevel = ref("national");
 const parallelLevel = ref("province");
 const parallelProvince = ref(null);
 
@@ -678,6 +679,14 @@ const isTrends = computed(() => route.name === "trends");
 const isMonthly = computed(() => route.name === "monthly");
 const isYearly = computed(() => route.name === "yearly");
 const isForecast = computed(() => route.name === "forecast");
+
+watch(
+  () => selectedRegion.value,
+  (region) => {
+    scopeLevel.value = region ? "province" : "national";
+  },
+  { immediate: true }
+);
 
 // Update viewMode based on route
 watch(
@@ -869,6 +878,17 @@ const mapSeries = computed(() =>
 );
 
 const levelStats = computed(() => classifyLevels(dayData.value, metric.value));
+const scopedLevelStats = computed(() => {
+  if (scopeLevel.value === "province" && selectedRegion.value) {
+    const normalizedTarget = normalizeProvince(selectedRegion.value);
+    if (!normalizedTarget) return levelStats.value;
+    const filteredRows = dayData.value.filter(
+      (row) => normalizeProvince(row.province) === normalizedTarget
+    );
+    return classifyLevels(filteredRows, metric.value);
+  }
+  return levelStats.value;
+});
 
 const radialVector = computed(() => {
   let data = dayData.value;

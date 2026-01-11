@@ -494,6 +494,10 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  scopeLevel: {
+    type: String,
+    default: "national",
+  },
 });
 
 // Emits
@@ -513,11 +517,9 @@ const monthlyAggregatedData = ref([]);
 const currentMonthDailyData = ref([]);
 const isMonthDetailLoading = ref(false);
 const mapGeoNames = ref([]);
-const analysisScope = ref("national");
-
 // Computed
 const selectedCity = computed(() =>
-  analysisScope.value === "national" ? "" : props.selectedRegion || ""
+  props.scopeLevel === "national" ? "" : props.selectedRegion || ""
 );
 
 const selectedYear = computed(() => props.currentYear);
@@ -526,7 +528,7 @@ const selectedMonth = computed(() =>
 );
 const monthlyMetric = computed(() => props.metric);
 const scopeLabel = computed(() =>
-  analysisScope.value === "national" ? "全国" : "省份"
+  props.scopeLevel === "national" ? "全国" : "省份"
 );
 
 const monthlyData = computed(() => {
@@ -893,12 +895,10 @@ const monthWindVectors = computed(() => {
 });
 
 function handleMapSelect(name) {
-  analysisScope.value = name ? "province" : "national";
   emit("update:region", name);
 }
 
 function handleRankingSelect(name) {
-  analysisScope.value = name ? "province" : "national";
   emit("update:region", name);
 }
 
@@ -1123,14 +1123,6 @@ function normalizeForDistance(value, pollutant) {
   const baseline = pollutantStandards[pollutant] || 1;
   return Math.log1p(Math.max(value, 0) / baseline);
 }
-
-watch(
-  () => props.selectedRegion,
-  (region) => {
-    analysisScope.value = region ? "province" : "national";
-  },
-  { immediate: true }
-);
 
 watch(
   () => props.currentYear,
