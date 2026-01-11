@@ -590,9 +590,11 @@ const diffAvg = computed(() => predAvg.value - actualAvg.value);
 // 概览模式需要的全部数据
 const allActualData = computed(() => {
   const result = [];
-  for (const [_, data] of actualCache.value) {
+  for (const [date, data] of actualCache.value) {
     if (Array.isArray(data)) {
-      result.push(...data.filter((r) => matchesRegion(r, region.value)));
+      // 注入日期，方便下游组件按日期筛选
+      const rows = data.map((r) => ({ ...r, date }));
+      result.push(...rows.filter((r) => matchesRegion(r, region.value)));
     }
   }
   return result;
@@ -600,9 +602,10 @@ const allActualData = computed(() => {
 
 const allPredData = computed(() => {
   const result = [];
-  for (const [_, data] of predCache.value) {
+  for (const [date, data] of predCache.value) {
     if (Array.isArray(data)) {
-      result.push(...data.filter((r) => matchesRegion(r, region.value)));
+      const rows = data.map((r) => ({ ...r, date }));
+      result.push(...rows.filter((r) => matchesRegion(r, region.value)));
     }
   }
   return result;

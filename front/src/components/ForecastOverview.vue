@@ -8,20 +8,14 @@
     </div>
 
     <div class="overview-grid">
-      <!-- 3D时空曲面图 -->
+      <!-- 3D污染物构成图 (原3D时空曲面图) -->
       <div class="overview-card large">
         <div class="card-header">
-          <h3>🌐 3D时空演变曲面</h3>
-          <div class="card-controls">
-            <select v-model="surface3DMetric" class="mini-select">
-              <option value="pm25">PM2.5</option>
-              <option value="pm10">PM10</option>
-              <option value="aqi">AQI</option>
-            </select>
-          </div>
+          <h3>🧱 重点区域污染物3D构成墙</h3>
+          <!-- 移除单选PM2.5控件，因为现在展示的是全污染物 -->
         </div>
         <div class="chart-3d" ref="surface3DRef"></div>
-        <p class="chart-desc">时间 × 空间 × 浓度三维立体展示</p>
+        <p class="chart-desc">Top15 污染城市多污染物 3D 结构对比 (基于 IAQI)</p>
       </div>
 
       <!-- 多维雷达对比 -->
@@ -31,6 +25,15 @@
         </div>
         <div class="chart-radar" ref="radarRef"></div>
         <p class="chart-desc">预测值（蓝）vs 实际值（橙）· 归一化显示</p>
+      </div>
+
+      <!-- 误差分布箱线图 -->
+      <div class="overview-card medium">
+        <div class="card-header">
+          <h3>📦 预测误差分布</h3>
+        </div>
+        <div class="chart-box" ref="errorBoxRef"></div>
+        <p class="chart-desc">各污染物误差统计 · 箱线图展示</p>
       </div>
 
       <!-- 关联热力矩阵 -->
@@ -81,15 +84,6 @@
         <div class="chart-parallel" ref="parallelRef"></div>
         <p class="chart-desc">高维数据全景视图 · 拖拽坐标轴可筛选</p>
       </div>
-
-      <!-- 误差分布箱线图 -->
-      <div class="overview-card medium">
-        <div class="card-header">
-          <h3>📦 预测误差分布</h3>
-        </div>
-        <div class="chart-box" ref="errorBoxRef"></div>
-        <p class="chart-desc">各污染物误差统计 · 箱线图展示</p>
-      </div>
     </div>
   </div>
 </template>
@@ -127,6 +121,9 @@ let heatmapChart = null;
 let aqiDistChart = null;
 let parallelChart = null;
 let errorBoxChart = null;
+
+// Geo Data
+let cityGeoMap = new Map();
 
 // 污染物列表
 const pollutants = ["pm25", "pm10", "so2", "no2", "co", "o3"];
@@ -231,76 +228,174 @@ const pearsonCorrelation = (x, y) => {
   return denominator === 0 ? 0 : numerator / denominator;
 };
 
-// 1. 渲染3D曲面图
+// 1. 渲染重点区域多污染物3D构成墙 (3D Multi-Pollutant Structure)
 const render3DSurface = () => {
   if (!surface3DRef.value) return;
   if (!surface3DChart) {
     surface3DChart = echarts.init(surface3DRef.value);
   }
 
-  // 准备数据：按日期和城市排序
-  const metric = surface3DMetric.value;
-  const data = props.predData.filter((d) => d[metric] != null).slice(0, 300); // 限制数据量避免卡顿
+  // 1. 获取当前日期数据
+  const targetDate = props.currentDate;
+  const daysData = props.predData.filter((d) => d.date === targetDate);
 
-  const surfaceData = data.map((d, idx) => [
-    idx, // X轴：城市索引
-    0, // Y轴：时间（简化为0）
-    d[metric] || 0, // Z轴：数值
-  ]);
+  if (daysData.length === 0) {
+    surface3DChart.setOption(
+      {
+        title: {
+          text: "当前日期无预测数据",
+          left: "center",
+          top: "center",
+          textStyle: { color: "#999" },
+        },
+      },
+      true
+    );
+    return;
+  }
+
+  // 2. 数据处理：计算每个城市的综合 AQI 并排序
+  const cityStats = daysData.map((d) => {
+    // 计算所有污染物的分指数 (IAQI)
+    // 使用 calcIAQI 辅助函数
+    const i_pm25 = calcIAQI(
+      d.pm25,
+      [0, 35, 75, 115, 150, 250, 350, 500],
+      [0, 50, 100, 150, 200, 300, 400, 500]
+    );
+    const i_pm10 = calcIAQI(
+      d.pm10,
+      [0, 50, 150, 250, 350, 420, 500, 600],
+      [0, 50, 100, 150, 200, 300, 400, 500]
+    );
+    const i_so2 = calcIAQI(
+      d.so2,
+      [0, 50, 150, 475, 800, 1600, 2100, 2620],
+      [0, 50, 100, 150, 200, 300, 400, 500]
+    );
+    const i_no2 = calcIAQI(
+      d.no2,
+      [0, 40, 80, 180, 280, 565, 750, 940],
+      [0, 50, 100, 150, 200, 300, 400, 500]
+    );
+    const i_co = calcIAQI(
+      d.co,
+      [0, 2, 4, 14, 24, 36, 48, 60],
+      [0, 50, 100, 150, 200, 300, 400, 500]
+    );
+    const i_o3 = calcIAQI(
+      d.o3,
+      [0, 160, 200, 300, 400, 800, 1000, 1200],
+      [0, 50, 100, 150, 200, 300, 400, 500]
+    );
+
+    const maxIAQI = Math.max(i_pm25, i_pm10, i_so2, i_no2, i_co, i_o3);
+
+    return {
+      city: d.city,
+      values: [i_pm25, i_pm10, i_so2, i_no2, i_co, i_o3],
+      maxIAQI,
+      raw: d,
+    };
+  });
+
+  // 3. 排序取 Top 15 (按污染最重)
+  const topCities = cityStats
+    .sort((a, b) => b.maxIAQI - a.maxIAQI)
+    .slice(0, 15);
+
+  // 4. 构建 3D Bar 数据 [X:污染物, Y:城市, Z:IAQI]
+  // Pollutants order: PM2.5, PM10, SO2, NO2, CO, O3
+  const pollutantsLabel = ["PM2.5", "PM10", "SO2", "NO2", "CO", "O3"];
+  const bar3DData = [];
+
+  topCities.forEach((c, yIndex) => {
+    // yIndex对应城市
+    c.values.forEach((val, xIndex) => {
+      // xIndex对应污染物
+      bar3DData.push({
+        name: c.city + " " + pollutantsLabel[xIndex],
+        value: [xIndex, yIndex, val],
+        itemStyle: {
+          color: getAQIColor(val), // 使用 AQI 颜色
+        },
+      });
+    });
+  });
 
   const option = {
-    tooltip: {},
     backgroundColor: "transparent",
-    visualMap: {
-      show: false,
-      min: 0,
-      max: Math.max(...data.map((d) => d[metric] || 0)),
-      inRange: {
-        color: [
-          "#313695",
-          "#4575b4",
-          "#74add1",
-          "#abd9e9",
-          "#e0f3f8",
-          "#ffffbf",
-          "#fee090",
-          "#fdae61",
-          "#f46d43",
-          "#d73027",
-          "#a50026",
-        ],
+    tooltip: {
+      formatter: (params) => {
+        const city = topCities[params.value[1]].city;
+        const type = pollutantsLabel[params.value[0]];
+        const val = params.value[2].toFixed(0);
+        return `${city} <br/> ${type} IAQI: <strong>${val}</strong>`;
       },
     },
-    xAxis3D: { type: "value", name: "城市" },
-    yAxis3D: { type: "value", name: "时间" },
-    zAxis3D: { type: "value", name: metric.toUpperCase() },
+    xAxis3D: {
+      type: "category",
+      data: pollutantsLabel,
+      name: "污染物",
+      axisLabel: {
+        interval: 0,
+        textStyle: { color: "#666", fontSize: 10 },
+      },
+      axisPointer: { show: false }, // 优化视觉
+    },
+    yAxis3D: {
+      type: "category",
+      data: topCities.map((c) => c.city),
+      name: "Top 污染城市",
+      axisLabel: {
+        interval: 0,
+        rotate: -45, // 倾斜避免重叠
+        textStyle: { color: "#666", fontSize: 10 },
+      },
+    },
+    zAxis3D: {
+      type: "value",
+      name: "IAQI (分指数)",
+      axisLine: { lineStyle: { color: "#999" } },
+    },
     grid3D: {
+      boxWidth: 100,
+      boxDepth: 120, // 城市多一点，深度拉大
+      boxHeight: 80,
       viewControl: {
-        autoRotate: true,
-        autoRotateSpeed: 5,
+        beta: 30,
+        alpha: 20,
+        distance: 240,
+        autoRotate: false, // 禁止自动旋转，方便看清
       },
       light: {
-        main: {
-          intensity: 1.2,
-        },
-        ambient: {
-          intensity: 0.3,
-        },
+        main: { intensity: 1.2, shadow: true },
+        ambient: { intensity: 0.3 },
       },
     },
     series: [
       {
-        type: "scatter3D",
-        data: surfaceData,
-        symbolSize: 4,
-        itemStyle: {
-          opacity: 0.8,
-        },
+        type: "bar3D",
+        data: bar3DData,
+        shading: "color", // 使用数据自身的颜色
+        barSize: 0.8, // 相对宽度
+        animation: true,
+        animationDurationUpdate: 500,
       },
     ],
   };
 
-  surface3DChart.setOption(option);
+  surface3DChart.setOption(option, true);
+};
+
+// Helper: 获取颜色 (简单版)
+const getAQIColor = (val) => {
+  if (val <= 50) return "#00E400";
+  if (val <= 100) return "#FFFF00";
+  if (val <= 150) return "#FF7E00";
+  if (val <= 200) return "#FF0000";
+  if (val <= 300) return "#99004C";
+  return "#7E0023";
 };
 
 // 2. 渲染多维雷达图
@@ -589,10 +684,12 @@ const renderParallel = () => {
     series: [
       {
         type: "parallel",
+        smooth: 0.3, // Optimization: Curve smoothing
         lineStyle: {
-          width: 1,
-          opacity: 0.5,
+          width: 1.5,
+          opacity: 0.3, // Optimization: Lower opacity for density
         },
+        // Optimization: Blend mode for better density visualization (if supported, otherwise opacity handles it)
         data: parallelData,
       },
     ],
@@ -668,18 +765,40 @@ const renderErrorBox = () => {
 };
 
 // 初始化和监听
-onMounted(() => {
+onMounted(async () => {
+  // Load GeoJSON
+  try {
+    const chinaRes = await fetch("/china.json");
+    const chinaGeo = await chinaRes.json();
+    echarts.registerMap("china", chinaGeo);
+
+    const regionRes = await fetch("/region.json");
+    const regions = await regionRes.json();
+    regions.forEach((r) => {
+      // Use standard city name as key
+      if (r.city && r.longitude && r.latitude) {
+        cityGeoMap.set(r.city, [Number(r.longitude), Number(r.latitude)]);
+      }
+    });
+  } catch (e) {
+    console.error("Failed to load geo data", e);
+  }
+
   nextTick(() => {
-    render3DSurface();
-    renderRadar();
-    renderHeatmap();
-    renderAQIDist();
-    renderParallel();
-    renderErrorBox();
+    initCharts(); // Helper to re-run renders
   });
 
   window.addEventListener("resize", handleResize);
 });
+
+const initCharts = () => {
+  render3DSurface();
+  renderRadar();
+  renderHeatmap();
+  renderAQIDist();
+  renderParallel();
+  renderErrorBox();
+};
 
 onBeforeUnmount(() => {
   window.removeEventListener("resize", handleResize);

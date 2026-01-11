@@ -23,9 +23,9 @@ const option = computed(() => {
   const axis = dimensions.map((d, idx) => ({
     dim: idx,
     name: d,
-    nameTextStyle: { color: "#666", fontFamily: 'JetBrains Mono' },
+    nameTextStyle: { color: "#666", fontFamily: "JetBrains Mono" },
     axisLine: { lineStyle: { color: "rgba(0,0,0,0.1)" } },
-    axisLabel: { color: "#666", fontFamily: 'JetBrains Mono' },
+    axisLabel: { color: "#666", fontFamily: "JetBrains Mono" },
   }));
 
   const data = props.rows.map((r) => ({
@@ -47,10 +47,12 @@ const option = computed(() => {
       trigger: "item",
       backgroundColor: "rgba(20, 20, 20, 0.9)",
       borderColor: "rgba(255, 255, 255, 0.15)",
-      textStyle: { color: "#0a0a0a", fontFamily: 'JetBrains Mono' },
+      textStyle: { color: "#0a0a0a", fontFamily: "JetBrains Mono" },
       formatter: (p) => {
         const d = data[p.dataIndex];
-        const lines = [`<div style="font-family: 'Oswald'; font-weight: bold">${d.name}</div>`];
+        const lines = [
+          `<div style="font-family: 'Oswald'; font-weight: bold">${d.name}</div>`,
+        ];
         dimensions.forEach((dim, i) => {
           lines.push(`${dim}: ${d.value[i]}`);
         });
@@ -61,18 +63,32 @@ const option = computed(() => {
     visualMap: {
       type: "continuous",
       min: 0,
-      max: Math.max(...(data.map((d) => d.value[0]).filter((n) => Number.isFinite(n))), 50),
+      max: Math.max(
+        ...data.map((d) => d.value[0]).filter((n) => Number.isFinite(n)),
+        50
+      ),
       dimension: 0,
       inRange: {
-        color: ["#22c55e", "#a3e635", "#facc15", "#f97316", "#ef4444", "#7f1d1d"],
+        color: [
+          "#22c55e",
+          "#a3e635",
+          "#facc15",
+          "#f97316",
+          "#ef4444",
+          "#7f1d1d",
+        ],
       },
       text: ["HIGH", "LOW"],
-      textStyle: { color: "#666", fontFamily: 'JetBrains Mono' },
+      textStyle: { color: "#666", fontFamily: "JetBrains Mono" },
     },
     series: [
       {
         type: "parallel",
-        lineStyle: { width: 1, opacity: 0.7 },
+        smooth: 0.3, // Curve smoothing
+        lineStyle: { width: 1.5, opacity: 0.4 }, // Alpha blending
+        // Improve interaction state
+        activeOpacity: 1,
+        inactiveOpacity: 0.05,
         data,
       },
     ],
