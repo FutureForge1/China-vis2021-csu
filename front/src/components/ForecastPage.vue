@@ -46,7 +46,7 @@
       </div>
 
       <!-- Granularity -->
-      <div class="control-group" v-show="viewMode === 'detail'">
+      <div class="control-group">
         <label>时间粒度</label>
         <div class="segmented-control">
           <div
@@ -145,8 +145,11 @@
       :actual-data="allActualData"
       :pred-data="allPredData"
       :current-date="currentDate"
+      :granularity="granularity"
       :region="region"
       :region-label="regionLabel"
+      @date-select="handleDateSelect"
+      @error-detail="handleErrorDetail"
     />
 
     <!-- Detail Analysis Section -->
@@ -182,9 +185,21 @@
             </div>
           </div>
           <div class="note">
-            数据：2019全年。若预测文件缺失，将回退显示实况。
+            ⚠️ 预测数据仅支持2019年。其他年份将显示实况数据作为回退。
           </div>
           <!-- 移除原有列表形式的重要性展示，改用 ECharts 渲染 -->
+        </div>
+      </section>
+
+      <!-- 日历热力图 -->
+      <section
+        class="layout calendar-section"
+        v-if="granularity === 'month' || granularity === 'year'"
+      >
+        <div class="pane full-width">
+          <h3>📅 AQI 日历热力图 - {{ calendarTitle }}</h3>
+          <div class="calendar-chart" ref="calendarRef"></div>
+          <p class="caption">颜色深浅表示污染程度 · 点击查看详情</p>
         </div>
       </section>
 
@@ -194,16 +209,22 @@
             :metric="metric"
             :series="actualTrend"
             :dates="trendDates"
+            :granularity="granularity"
           />
           <p class="caption">实况趋势 ({{ granularityLabel }})</p>
         </div>
         <div class="pane">
-          <TrendLine :metric="metric" :series="predTrend" :dates="trendDates" />
+          <TrendLine
+            :metric="metric"
+            :series="predTrend"
+            :dates="trendDates"
+            :granularity="granularity"
+          />
           <p class="caption">预测趋势 ({{ granularityLabel }})</p>
         </div>
         <div class="pane">
           <div class="mini-compare">
-            <h4>对比曲线</h4>
+            <h4>对比曲线 ({{ granularityLabel }})</h4>
             <div class="mini-chart" ref="compareRef"></div>
             <div class="caption">灰=实况，黄=预测；跟随粒度/地区筛选</div>
           </div>
@@ -282,6 +303,17 @@ let monthlyChart = null;
 const monthlyRef = ref(null);
 let featureChart = null;
 const featureRef = ref(null);
+let calendarChart = null;
+const calendarRef = ref(null);
+
+const calendarTitle = computed(() => {
+  if (granularity.value === "year") {
+    return "2019年全年";
+  } else if (granularity.value === "month") {
+    return currentDate.value.slice(0, 7);
+  }
+  return currentDate.value;
+});
 
 function buildPaths(base, dateStr) {
   const clean = dateStr.replace(/-/g, "");
@@ -587,27 +619,70 @@ const predAvg = computed(() => {
 
 const diffAvg = computed(() => predAvg.value - actualAvg.value);
 
-// 概览模式需要的全部数据
+// 概览模式需要的数据（根据当前日期和粒度过滤）
 const allActualData = computed(() => {
   const result = [];
-  for (const [date, data] of actualCache.value) {
+
+  // 根据粒度过滤数据
+  if (granularity.value === "day") {
+    // 天级：只返回当前日期的数据
+    const data = actualCache.value.get(currentDate.value);
     if (Array.isArray(data)) {
-      // 注入日期，方便下游组件按日期筛选
-      const rows = data.map((r) => ({ ...r, date }));
+      const rows = data.map((r) => ({ ...r, date: currentDate.value }));
       result.push(...rows.filter((r) => matchesRegion(r, region.value)));
     }
+  } else if (granularity.value === "month") {
+    // 月级：返回当前月份的所有数据
+    const monthPrefix = currentDate.value.slice(0, 7); // YYYY-MM
+    for (const [date, data] of actualCache.value) {
+      if (date.startsWith(monthPrefix) && Array.isArray(data)) {
+        const rows = data.map((r) => ({ ...r, date }));
+        result.push(...rows.filter((r) => matchesRegion(r, region.value)));
+      }
+    }
+  } else {
+    // 年级：返回全年数据
+    for (const [date, data] of actualCache.value) {
+      if (Array.isArray(data)) {
+        const rows = data.map((r) => ({ ...r, date }));
+        result.push(...rows.filter((r) => matchesRegion(r, region.value)));
+      }
+    }
   }
+
   return result;
 });
 
 const allPredData = computed(() => {
   const result = [];
-  for (const [date, data] of predCache.value) {
+
+  // 根据粒度过滤数据
+  if (granularity.value === "day") {
+    // 天级：只返回当前日期的数据
+    const data = predCache.value.get(currentDate.value);
     if (Array.isArray(data)) {
-      const rows = data.map((r) => ({ ...r, date }));
+      const rows = data.map((r) => ({ ...r, date: currentDate.value }));
       result.push(...rows.filter((r) => matchesRegion(r, region.value)));
     }
+  } else if (granularity.value === "month") {
+    // 月级：返回当前月份的所有数据
+    const monthPrefix = currentDate.value.slice(0, 7); // YYYY-MM
+    for (const [date, data] of predCache.value) {
+      if (date.startsWith(monthPrefix) && Array.isArray(data)) {
+        const rows = data.map((r) => ({ ...r, date }));
+        result.push(...rows.filter((r) => matchesRegion(r, region.value)));
+      }
+    }
+  } else {
+    // 年级：返回全年数据
+    for (const [date, data] of predCache.value) {
+      if (Array.isArray(data)) {
+        const rows = data.map((r) => ({ ...r, date }));
+        result.push(...rows.filter((r) => matchesRegion(r, region.value)));
+      }
+    }
   }
+
   return result;
 });
 
@@ -646,17 +721,49 @@ watch(region, (newVal) => {
   }
 });
 
+// 处理时间轴日期选择
+function handleDateSelect(date) {
+  // 切换到详细分析模式，并更新当前日期
+  viewMode.value = "detail";
+  currentDate.value = date;
+  granularity.value = "day";
+}
+
+// 处理误差详情点击
+function handleErrorDetail(payload) {
+  // 可以显示一个弹窗或跳转到详细分析
+  console.log("Error detail clicked:", payload);
+  // 这里可以添加更多逻辑，例如高亮显示对应的污染物
+  viewMode.value = "detail";
+  metric.value = payload.pollutant;
+}
+
 async function preloadAll() {
   if (!rawDates.value.length) return;
+
+  let predFilesFound = 0;
+  let fallbackCount = 0;
+
   await Promise.all(
     rawDates.value.map(async (d) => {
       await loadDay(d, actualCache, "/data");
       const pred = await loadDay(d, predCache, "/data/predictions");
       if (!pred?.length) {
-        // fallback to actual when prediction missing
-        predCache.value.set(d, actualCache.value.get(d) || []);
+        // fallback to actual when prediction missing (deep copy to avoid reference issues)
+        const actualData = actualCache.value.get(d) || [];
+        predCache.value.set(
+          d,
+          actualData.map((item) => ({ ...item }))
+        );
+        fallbackCount++;
+      } else {
+        predFilesFound++;
       }
     })
+  );
+
+  console.log(
+    `[Forecast] 预测数据加载统计: ${predFilesFound}个文件, ${fallbackCount}个回退`
   );
 
   // Build region options from loaded data
@@ -816,20 +923,34 @@ watch([metric, currentDate, mode, granularity, region], () => {
   nextTick(renderCompare);
   nextTick(renderMonthly);
   nextTick(renderFeature);
+  nextTick(renderCalendar);
 });
 
 onMounted(async () => {
   regionIndex.value = await loadRegionIndex();
   await loadIndex();
+
+  // 确保默认使用2019年（唯一有预测数据的年份）
+  if (!currentDate.value.startsWith("2019")) {
+    const first2019Date = rawDates.value.find((d) => d.startsWith("2019"));
+    if (first2019Date) {
+      currentDate.value = first2019Date;
+      console.log("[Forecast] 自动切换到2019年（预测数据可用）");
+    }
+  }
+
   await preloadAll();
   await loadFeatureImportance();
   await loadMetrics();
   nextTick(renderCompare);
   nextTick(renderMonthly);
   nextTick(renderFeature);
+  nextTick(renderCalendar);
+  window.addEventListener("resize", handleResize);
 });
 
 onBeforeUnmount(() => {
+  window.removeEventListener("resize", handleResize);
   if (compareChart) {
     compareChart.dispose();
     compareChart = null;
@@ -842,7 +963,192 @@ onBeforeUnmount(() => {
     featureChart.dispose();
     featureChart = null;
   }
+  if (calendarChart) {
+    calendarChart.dispose();
+    calendarChart = null;
+  }
 });
+
+function handleResize() {
+  compareChart?.resize();
+  monthlyChart?.resize();
+  featureChart?.resize();
+  calendarChart?.resize();
+}
+
+// 计算AQI
+function calculateAQI(pm25, pm10, so2, no2, co, o3) {
+  const calcIAQI = (cp, bps, iaqis) => {
+    for (let i = 0; i < bps.length - 1; i++) {
+      if (cp >= bps[i] && cp <= bps[i + 1]) {
+        const iLo = iaqis[i];
+        const iHi = iaqis[i + 1];
+        const bpLo = bps[i];
+        const bpHi = bps[i + 1];
+        return ((iHi - iLo) / (bpHi - bpLo)) * (cp - bpLo) + iLo;
+      }
+    }
+    return 0;
+  };
+
+  const iaqi = [
+    calcIAQI(
+      pm25,
+      [0, 35, 75, 115, 150, 250, 350, 500],
+      [0, 50, 100, 150, 200, 300, 400, 500]
+    ),
+    calcIAQI(
+      pm10,
+      [0, 50, 150, 250, 350, 420, 500, 600],
+      [0, 50, 100, 150, 200, 300, 400, 500]
+    ),
+    calcIAQI(
+      so2,
+      [0, 50, 150, 475, 800, 1600, 2100, 2620],
+      [0, 50, 100, 150, 200, 300, 400, 500]
+    ),
+    calcIAQI(
+      no2,
+      [0, 40, 80, 180, 280, 565, 750, 940],
+      [0, 50, 100, 150, 200, 300, 400, 500]
+    ),
+    calcIAQI(
+      co,
+      [0, 2, 4, 14, 24, 36, 48, 60],
+      [0, 50, 100, 150, 200, 300, 400, 500]
+    ),
+    calcIAQI(
+      o3,
+      [0, 160, 200, 300, 400, 800, 1000, 1200],
+      [0, 50, 100, 150, 200, 300, 400, 500]
+    ),
+  ];
+  return Math.max(...iaqi.filter((v) => !isNaN(v)));
+}
+
+// 渲染日历热力图
+function renderCalendar() {
+  if (!calendarRef.value) {
+    console.log("[Calendar] calendarRef 为空");
+    return;
+  }
+  if (!calendarChart) {
+    calendarChart = echarts.init(calendarRef.value);
+  }
+
+  // 收集数据
+  const calendarData = [];
+  const cache = mode.value === "pred" ? predCache.value : actualCache.value;
+
+  console.log(
+    "[Calendar] 开始渲染，granularity:",
+    granularity.value,
+    "currentDate:",
+    currentDate.value,
+    "cache size:",
+    cache.size
+  );
+
+  for (const [date, rows] of cache) {
+    if (!Array.isArray(rows) || rows.length === 0) continue;
+
+    // 根据粒度过滤
+    if (granularity.value === "month") {
+      const monthPrefix = currentDate.value.slice(0, 7);
+      if (!date.startsWith(monthPrefix)) continue;
+    } else if (granularity.value === "year") {
+      // 年颗粒度：只显示2019年的数据
+      const yearPrefix = currentDate.value.slice(0, 4);
+      if (!date.startsWith(yearPrefix)) continue;
+    }
+
+    // 过滤区域
+    const filtered = rows.filter((r) => {
+      if (region.value === "all" || !region.value) return true;
+      return r.province === region.value || r.city === region.value;
+    });
+
+    if (filtered.length === 0) continue;
+
+    // 计算平均AQI
+    const aqis = filtered
+      .map((r) => {
+        return calculateAQI(
+          Number(r.pm25),
+          Number(r.pm10),
+          Number(r.so2),
+          Number(r.no2),
+          Number(r.co),
+          Number(r.o3)
+        );
+      })
+      .filter((v) => !isNaN(v) && isFinite(v));
+
+    if (aqis.length > 0) {
+      const avgAqi = aqis.reduce((a, b) => a + b, 0) / aqis.length;
+      calendarData.push([date, Math.round(avgAqi)]);
+    }
+  }
+
+  console.log("[Calendar] 数据点数量:", calendarData.length);
+
+  const yearRange =
+    granularity.value === "year" ? "2019" : currentDate.value.slice(0, 7);
+
+  const option = {
+    backgroundColor: "transparent",
+    tooltip: {
+      formatter: (params) => {
+        return `${params.data[0]}<br/>AQI: <strong>${params.data[1]}</strong>`;
+      },
+    },
+    visualMap: {
+      min: 0,
+      max: 300,
+      type: "piecewise",
+      orient: "horizontal",
+      left: "center",
+      top: 20,
+      pieces: [
+        { min: 0, max: 50, label: "优 (0-50)", color: "#00e400" },
+        { min: 50, max: 100, label: "良 (50-100)", color: "#ffff00" },
+        { min: 100, max: 150, label: "轻度 (100-150)", color: "#ff7e00" },
+        { min: 150, max: 200, label: "中度 (150-200)", color: "#ff0000" },
+        { min: 200, max: 300, label: "重度 (200-300)", color: "#8f3f97" },
+        { min: 300, label: "严重 (300+)", color: "#7e0023" },
+      ],
+    },
+    calendar: {
+      top: 100,
+      left: 50,
+      right: 50,
+      cellSize: ["auto", 16],
+      range: yearRange,
+      itemStyle: {
+        borderWidth: 3,
+        borderColor: "#fff",
+      },
+      yearLabel: { show: false },
+      monthLabel: {
+        nameMap: "cn",
+        fontSize: 12,
+      },
+      dayLabel: {
+        nameMap: "cn",
+        fontSize: 11,
+      },
+    },
+    series: [
+      {
+        type: "heatmap",
+        coordinateSystem: "calendar",
+        data: calendarData,
+      },
+    ],
+  };
+
+  calendarChart.setOption(option);
+}
 
 async function loadFeatureImportance() {
   try {
@@ -1154,5 +1460,19 @@ const granularityLabel = computed(() => {
   color: var(--c-gray);
   text-align: center;
   font-style: italic;
+}
+
+.calendar-section {
+  margin-top: 20px;
+}
+
+.calendar-chart {
+  width: 100%;
+  height: 300px;
+  min-height: 300px;
+}
+
+.full-width {
+  width: 100%;
 }
 </style>

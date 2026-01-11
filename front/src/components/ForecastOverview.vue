@@ -3,7 +3,7 @@
     <div class="overview-header">
       <h2 class="overview-title">
         <span class="badge">多维预测概览</span>
-        <span class="subtitle">{{ currentDate }} · {{ regionLabel }}</span>
+        <span class="subtitle">{{ timeRangeLabel }} · {{ regionLabel }}</span>
       </h2>
     </div>
 
@@ -27,13 +27,25 @@
         <p class="chart-desc">预测值（蓝）vs 实际值（橙）· 归一化显示</p>
       </div>
 
+      <!-- AQI预警时间轴 -->
+      <div class="overview-card xlarge" v-if="granularity === 'year'">
+        <div class="card-header">
+          <h3>⚠️ AQI预警时间轴（2019年）</h3>
+          <div class="card-controls">
+            <span class="threshold-label">预警阈值: AQI ≥ 150</span>
+          </div>
+        </div>
+        <div class="chart-timeline" ref="timelineRef"></div>
+        <p class="chart-desc">点击日期联动查看空间分布 · 颜色表示污染等级</p>
+      </div>
+
       <!-- 误差分布箱线图 -->
       <div class="overview-card medium">
         <div class="card-header">
           <h3>📦 预测误差分布</h3>
         </div>
         <div class="chart-box" ref="errorBoxRef"></div>
-        <p class="chart-desc">各污染物误差统计 · 箱线图展示</p>
+        <p class="chart-desc">各污染物误差统计 · 重污染日标红 · 点击查看详情</p>
       </div>
 
       <!-- 关联热力矩阵 -->
@@ -91,20 +103,40 @@
 <script setup>
 import * as echarts from "echarts";
 import "echarts-gl"; // 3D图表支持
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from "vue";
 
 const props = defineProps({
   actualData: { type: Array, default: () => [] }, // 实际数据
   predData: { type: Array, default: () => [] }, // 预测数据
   currentDate: { type: String, default: "" },
+  granularity: { type: String, default: "year" }, // 时间粒度：day/month/year
   region: { type: String, default: "all" },
   regionLabel: { type: String, default: "全国" },
+});
+
+// 时间范围标签
+const timeRangeLabel = computed(() => {
+  if (props.granularity === "day") {
+    return props.currentDate;
+  } else if (props.granularity === "month") {
+    return props.currentDate.slice(0, 7); // YYYY-MM
+  } else {
+    return "2019年全年";
+  }
 });
 
 // 控制状态
 const surface3DMetric = ref("pm25");
 const heatmapMode = ref("pred");
 const showOutliers = ref(false);
+const selectedDate = ref("");
 
 // Chart refs
 const surface3DRef = ref(null);
@@ -113,6 +145,10 @@ const heatmapRef = ref(null);
 const aqiDistRef = ref(null);
 const parallelRef = ref(null);
 const errorBoxRef = ref(null);
+const timelineRef = ref(null);
+
+// Emit events
+const emit = defineEmits(["date-select", "error-detail"]);
 
 // Chart instances
 let surface3DChart = null;
@@ -121,6 +157,7 @@ let heatmapChart = null;
 let aqiDistChart = null;
 let parallelChart = null;
 let errorBoxChart = null;
+let timelineChart = null;
 
 // Geo Data
 let cityGeoMap = new Map();
@@ -235,15 +272,14 @@ const render3DSurface = () => {
     surface3DChart = echarts.init(surface3DRef.value);
   }
 
-  // 1. 获取当前日期数据
-  const targetDate = props.currentDate;
-  const daysData = props.predData.filter((d) => d.date === targetDate);
+  // 使用所有传入的数据（已经在父组件中按粒度过滤）
+  const daysData = props.predData;
 
   if (daysData.length === 0) {
     surface3DChart.setOption(
       {
         title: {
-          text: "当前日期无预测数据",
+          text: "当前时间范围无预测数据",
           left: "center",
           top: "center",
           textStyle: { color: "#999" },
@@ -254,37 +290,70 @@ const render3DSurface = () => {
     return;
   }
 
-  // 2. 数据处理：计算每个城市的综合 AQI 并排序
-  const cityStats = daysData.map((d) => {
-    // 计算所有污染物的分指数 (IAQI)
-    // 使用 calcIAQI 辅助函数
+  // 2. 数据处理：按城市聚合，计算平均IAQI
+  const cityAggregates = new Map();
+
+  daysData.forEach((d) => {
+    const city = d.city || "未知";
+    if (!cityAggregates.has(city)) {
+      cityAggregates.set(city, {
+        city,
+        pm25List: [],
+        pm10List: [],
+        so2List: [],
+        no2List: [],
+        coList: [],
+        o3List: [],
+      });
+    }
+    const agg = cityAggregates.get(city);
+    if (d.pm25 != null) agg.pm25List.push(d.pm25);
+    if (d.pm10 != null) agg.pm10List.push(d.pm10);
+    if (d.so2 != null) agg.so2List.push(d.so2);
+    if (d.no2 != null) agg.no2List.push(d.no2);
+    if (d.co != null) agg.coList.push(d.co);
+    if (d.o3 != null) agg.o3List.push(d.o3);
+  });
+
+  const cityStats = Array.from(cityAggregates.values()).map((agg) => {
+    const avg = (arr) =>
+      arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+
+    const avgPm25 = avg(agg.pm25List);
+    const avgPm10 = avg(agg.pm10List);
+    const avgSo2 = avg(agg.so2List);
+    const avgNo2 = avg(agg.no2List);
+    const avgCo = avg(agg.coList);
+    const avgO3 = avg(agg.o3List);
+
+    // 计算平均IAQI
     const i_pm25 = calcIAQI(
-      d.pm25,
+      avgPm25,
       [0, 35, 75, 115, 150, 250, 350, 500],
       [0, 50, 100, 150, 200, 300, 400, 500]
     );
     const i_pm10 = calcIAQI(
-      d.pm10,
+      avgPm10,
       [0, 50, 150, 250, 350, 420, 500, 600],
       [0, 50, 100, 150, 200, 300, 400, 500]
     );
     const i_so2 = calcIAQI(
-      d.so2,
+      avgSo2,
       [0, 50, 150, 475, 800, 1600, 2100, 2620],
       [0, 50, 100, 150, 200, 300, 400, 500]
     );
     const i_no2 = calcIAQI(
-      d.no2,
+      avgNo2,
       [0, 40, 80, 180, 280, 565, 750, 940],
       [0, 50, 100, 150, 200, 300, 400, 500]
     );
     const i_co = calcIAQI(
-      d.co,
+      avgCo,
       [0, 2, 4, 14, 24, 36, 48, 60],
       [0, 50, 100, 150, 200, 300, 400, 500]
     );
     const i_o3 = calcIAQI(
-      d.o3,
+      avgO3,
       [0, 160, 200, 300, 400, 800, 1000, 1200],
       [0, 50, 100, 150, 200, 300, 400, 500]
     );
@@ -292,10 +361,17 @@ const render3DSurface = () => {
     const maxIAQI = Math.max(i_pm25, i_pm10, i_so2, i_no2, i_co, i_o3);
 
     return {
-      city: d.city,
+      city: agg.city,
       values: [i_pm25, i_pm10, i_so2, i_no2, i_co, i_o3],
       maxIAQI,
-      raw: d,
+      avgConc: {
+        pm25: avgPm25,
+        pm10: avgPm10,
+        so2: avgSo2,
+        no2: avgNo2,
+        co: avgCo,
+        o3: avgO3,
+      },
     };
   });
 
@@ -698,7 +774,204 @@ const renderParallel = () => {
   parallelChart.setOption(option);
 };
 
-// 6. 渲染误差箱线图
+// 6. 渲染AQI预警时间轴
+const renderTimeline = () => {
+  if (!timelineRef.value) {
+    console.log("[Timeline] timelineRef 为空");
+    return;
+  }
+  if (!timelineChart) {
+    timelineChart = echarts.init(timelineRef.value);
+  }
+
+  console.log(
+    "[Timeline] 渲染时间轴，predData长度:",
+    props.predData.length,
+    "actualData长度:",
+    props.actualData.length
+  );
+
+  const AQI_THRESHOLD = 150;
+
+  // 按日期聚合数据，计算每天的全国平均AQI
+  const dateMap = new Map();
+  props.predData.forEach((p, idx) => {
+    const date = p.date || `Day ${idx + 1}`;
+    if (!dateMap.has(date)) {
+      dateMap.set(date, { predList: [], actualList: [] });
+    }
+    dateMap.get(date).predList.push(p);
+  });
+
+  props.actualData.forEach((a, idx) => {
+    const date = a.date || props.predData[idx]?.date || `Day ${idx + 1}`;
+    if (dateMap.has(date)) {
+      dateMap.get(date).actualList.push(a);
+    }
+  });
+
+  const timelineData = Array.from(dateMap.entries())
+    .map(([date, { predList, actualList }]) => {
+      // 计算该日期所有城市的平均AQI
+      const predAqis = predList
+        .map((p) => calculateAQI(p.pm25, p.pm10, p.so2, p.no2, p.co, p.o3))
+        .filter((v) => !isNaN(v));
+      const actualAqis = actualList
+        .map((a) => calculateAQI(a.pm25, a.pm10, a.so2, a.no2, a.co, a.o3))
+        .filter((v) => !isNaN(v));
+
+      const aqi =
+        predAqis.length > 0
+          ? predAqis.reduce((sum, v) => sum + v, 0) / predAqis.length
+          : 0;
+      const actualAqi =
+        actualAqis.length > 0
+          ? actualAqis.reduce((sum, v) => sum + v, 0) / actualAqis.length
+          : 0;
+
+      let level = "优";
+      let color = "#00e400";
+      if (aqi >= 300) {
+        level = "严重污染";
+        color = "#7e0023";
+      } else if (aqi >= 200) {
+        level = "重度污染";
+        color = "#8f3f97";
+      } else if (aqi >= 150) {
+        level = "中度污染";
+        color = "#ff0000";
+      } else if (aqi >= 100) {
+        level = "轻度污染";
+        color = "#ff7e00";
+      } else if (aqi >= 50) {
+        level = "良";
+        color = "#ffff00";
+      }
+
+      return {
+        date,
+        aqi,
+        actualAqi,
+        level,
+        color,
+        isWarning: aqi >= AQI_THRESHOLD,
+        cityCount: predList.length,
+      };
+    })
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  const xAxisData = timelineData.map((d) => d.date);
+  const seriesData = timelineData.map((d, idx) => ({
+    value: d.aqi,
+    itemStyle: {
+      color: d.color,
+      borderColor: d.isWarning ? "#ff0000" : "#fff",
+      borderWidth: d.isWarning ? 2 : 0,
+    },
+    emphasis: {
+      itemStyle: {
+        borderWidth: 3,
+        shadowBlur: 10,
+        shadowColor: d.color,
+      },
+    },
+    date: d.date,
+    level: d.level,
+    actualAqi: d.actualAqi,
+    levelColor: d.color, // 保存颜色用于tooltip显示
+  }));
+
+  const option = {
+    backgroundColor: "transparent",
+    tooltip: {
+      trigger: "axis",
+      axisPointer: { type: "shadow" },
+      formatter: (params) => {
+        const p = params[0];
+        const data = p.data;
+        return `
+          <div style="padding: 8px;">
+            <div style="font-weight: bold; margin-bottom: 4px;">${
+              data.date
+            }</div>
+            <div style="color: ${data.levelColor};">污染等级: ${
+          data.level
+        }</div>
+            <div>全国平均AQI: <strong>${data.value.toFixed(0)}</strong></div>
+            <div>实际平均: <strong>${data.actualAqi.toFixed(0)}</strong></div>
+            <div style="font-size: 11px; color: #666;">城市数: ${
+              data.cityCount
+            }</div>
+            ${
+              data.value >= 150
+                ? '<div style="color: #ff0000; font-weight: bold;">⚠️ 超过预警阈值</div>'
+                : ""
+            }
+            <div style="margin-top: 4px; font-size: 11px; color: #999;">点击查看详情</div>
+          </div>
+        `;
+      },
+    },
+    grid: {
+      left: "3%",
+      right: "3%",
+      top: "15%",
+      bottom: "10%",
+      containLabel: true,
+    },
+    xAxis: {
+      type: "category",
+      data: xAxisData,
+      axisLabel: {
+        color: "#666",
+        interval: Math.floor(xAxisData.length / 12),
+        rotate: 45,
+      },
+      axisLine: { lineStyle: { color: "#ddd" } },
+    },
+    yAxis: {
+      type: "value",
+      name: "AQI",
+      axisLabel: { color: "#666" },
+      splitLine: { lineStyle: { color: "rgba(0,0,0,0.06)" } },
+    },
+    series: [
+      {
+        type: "bar",
+        data: seriesData,
+        barMaxWidth: 8,
+        markLine: {
+          silent: true,
+          symbol: "none",
+          lineStyle: {
+            color: "#ff0000",
+            type: "dashed",
+            width: 2,
+          },
+          label: {
+            position: "end",
+            formatter: "预警阈值 150",
+            color: "#ff0000",
+          },
+          data: [{ yAxis: AQI_THRESHOLD }],
+        },
+      },
+    ],
+  };
+
+  timelineChart.setOption(option);
+
+  // 添加点击事件
+  timelineChart.off("click");
+  timelineChart.on("click", (params) => {
+    if (params.data && params.data.date) {
+      selectedDate.value = params.data.date;
+      emit("date-select", params.data.date);
+    }
+  });
+};
+
+// 7. 渲染误差箱线图（增强版：标注重污染日）
 const renderErrorBox = () => {
   if (!errorBoxRef.value) return;
   if (!errorBoxChart) {
@@ -714,23 +987,62 @@ const renderErrorBox = () => {
     return arr[lower] + (arr[upper] - arr[lower]) * (idx - lower);
   };
 
-  const errors = pollutants.map((p) => {
-    const errs = [];
-    for (
-      let i = 0;
-      i < Math.min(props.predData.length, props.actualData.length);
-      i++
-    ) {
-      const pred = props.predData[i][p];
-      const actual = props.actualData[i][p];
-      if (pred != null && actual != null) {
-        errs.push(Math.abs(pred - actual));
-      }
-    }
-    return errs.sort((a, b) => a - b);
+  const AQI_THRESHOLD = 150;
+
+  // 构建实际数据的索引映射 (city-date -> data)
+  const actualMap = new Map();
+  props.actualData.forEach((item) => {
+    const key = `${item.city}-${item.date}`;
+    actualMap.set(key, item);
   });
 
-  const boxData = errors.map((arr) => {
+  const errors = pollutants.map((p) => {
+    const errs = [];
+    const heavyPollutionErrs = [];
+
+    // 遍历预测数据，找到对应的实际数据进行匹配
+    props.predData.forEach((predItem) => {
+      const key = `${predItem.city}-${predItem.date}`;
+      const actualItem = actualMap.get(key);
+
+      if (actualItem) {
+        const pred = predItem[p];
+        const actual = actualItem[p];
+
+        if (pred != null && actual != null) {
+          const err = Math.abs(pred - actual);
+          errs.push(err);
+
+          // 检查是否为重污染日
+          const actualAqi = calculateAQI(
+            actualItem.pm25,
+            actualItem.pm10,
+            actualItem.so2,
+            actualItem.no2,
+            actualItem.co,
+            actualItem.o3
+          );
+          if (actualAqi >= AQI_THRESHOLD) {
+            heavyPollutionErrs.push(err);
+          }
+        }
+      }
+    });
+
+    return { errs: errs.sort((a, b) => a - b), heavyErrs: heavyPollutionErrs };
+  });
+
+  // 调试信息
+  console.log("ErrorBox Debug:", {
+    predDataLength: props.predData.length,
+    actualDataLength: props.actualData.length,
+    samplePred: props.predData[0],
+    sampleActual: props.actualData[0],
+    pm25Errors: errors[0].errs.slice(0, 10),
+    matchCount: errors[0].errs.length,
+  });
+
+  const boxData = errors.map(({ errs: arr }) => {
     if (arr.length === 0) return [0, 0, 0, 0, 0];
     const q1 = percentile(arr, 0.25);
     const median = percentile(arr, 0.5);
@@ -744,9 +1056,53 @@ const renderErrorBox = () => {
     return [minVal, q1, median, q3, maxVal];
   });
 
+  // 计算重污染日的平均误差（用于标注）
+  const heavyPollutionMarks = errors
+    .map(({ heavyErrs }, idx) => {
+      if (heavyErrs.length === 0) return null;
+      const avgErr = heavyErrs.reduce((a, b) => a + b, 0) / heavyErrs.length;
+      return [
+        idx, // x轴位置（污染物索引）
+        avgErr, // y轴位置（平均误差值）
+        heavyErrs.length, // 额外信息：样本数
+      ];
+    })
+    .filter(Boolean);
+
   const option = {
     backgroundColor: "transparent",
-    tooltip: { trigger: "item" },
+    tooltip: {
+      trigger: "item",
+      formatter: (params) => {
+        if (params.componentSubType === "boxplot") {
+          const [min, q1, median, q3, max] = params.data;
+          return `
+            <div style="padding: 8px;">
+              <div style="font-weight: bold;">${params.name}</div>
+              <div>最小值: ${min.toFixed(2)}</div>
+              <div>Q1: ${q1.toFixed(2)}</div>
+              <div>中位数: ${median.toFixed(2)}</div>
+              <div>Q3: ${q3.toFixed(2)}</div>
+              <div>最大值: ${max.toFixed(2)}</div>
+              <div style="margin-top: 4px; color: #ff0000;">红点=重污染日平均误差</div>
+            </div>
+          `;
+        }
+        if (params.componentSubType === "scatter") {
+          const [x, y, count] = params.data;
+          return `
+            <div style="padding: 8px;">
+              <div style="font-weight: bold; color: #ff0000;">⚠️ 重污染日误差</div>
+              <div>${pollutants[x].toUpperCase()}</div>
+              <div>平均误差: <strong>${y.toFixed(2)}</strong></div>
+              <div>样本数: ${count} 天</div>
+              <div style="margin-top: 4px; font-size: 11px; color: #999;">点击查看详情</div>
+            </div>
+          `;
+        }
+        return params.name;
+      },
+    },
     grid: {
       left: "10%",
       right: "10%",
@@ -773,10 +1129,43 @@ const renderErrorBox = () => {
           borderColor: "#2980b9",
         },
       },
+      {
+        name: "重污染日误差",
+        type: "scatter",
+        data: heavyPollutionMarks,
+        symbolSize: 12,
+        itemStyle: {
+          color: "#ff0000",
+          borderColor: "#fff",
+          borderWidth: 2,
+        },
+        label: {
+          show: true,
+          position: "top",
+          formatter: (params) => params.data[1].toFixed(1),
+          color: "#ff0000",
+          fontSize: 10,
+          fontWeight: "bold",
+        },
+        z: 10,
+      },
     ],
   };
 
   errorBoxChart.setOption(option);
+
+  // 添加点击事件
+  errorBoxChart.off("click");
+  errorBoxChart.on("click", (params) => {
+    if (params.componentSubType === "scatter" && params.data) {
+      const [x, y] = params.data;
+      // 点击重污染日标记，可以触发详细分析
+      emit("error-detail", {
+        pollutant: pollutants[x],
+        error: y,
+      });
+    }
+  });
 };
 
 // 初始化和监听
@@ -812,6 +1201,7 @@ const initCharts = () => {
   renderHeatmap();
   renderAQIDist();
   renderParallel();
+  renderTimeline();
   renderErrorBox();
 };
 
@@ -822,6 +1212,7 @@ onBeforeUnmount(() => {
   if (heatmapChart) heatmapChart.dispose();
   if (aqiDistChart) aqiDistChart.dispose();
   if (parallelChart) parallelChart.dispose();
+  if (timelineChart) timelineChart.dispose();
   if (errorBoxChart) errorBoxChart.dispose();
 });
 
@@ -831,6 +1222,7 @@ const handleResize = () => {
   heatmapChart?.resize();
   aqiDistChart?.resize();
   parallelChart?.resize();
+  timelineChart?.resize();
   errorBoxChart?.resize();
 };
 
@@ -842,6 +1234,7 @@ watch(
       renderHeatmap();
       renderAQIDist();
       renderParallel();
+      renderTimeline();
       renderErrorBox();
     });
   },
@@ -857,6 +1250,7 @@ watch(
       renderHeatmap();
       renderAQIDist();
       renderParallel();
+      renderTimeline();
       renderErrorBox();
     });
   },
@@ -1004,13 +1398,24 @@ watch(heatmapMode, renderHeatmap);
 .chart-heatmap,
 .chart-dist,
 .chart-parallel,
+.chart-timeline,
 .chart-box {
   width: 100%;
   height: 400px;
 }
 
-.chart-parallel {
+.chart-parallel,
+.chart-timeline {
   height: 300px;
+}
+
+.threshold-label {
+  font-size: 12px;
+  color: #ff0000;
+  font-weight: 600;
+  padding: 4px 8px;
+  background: rgba(255, 0, 0, 0.1);
+  border-radius: 4px;
 }
 
 .chart-desc {
