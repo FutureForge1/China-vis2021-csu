@@ -225,16 +225,152 @@
 
     <!-- Row 4: Ranking & Ring -->
     <section class="layout secondary">
+      <!-- 左侧面板：降维图 -->
       <div class="pane">
-        <AQIRanking :items="monthAQIRanking" @select="handleRankingSelect" />
+        <h3>省份污染特征降维分析</h3>
+        <!-- 文档2中应该这样使用 -->
+        <!-- 在月度分析部分，修改ProvinceDimensionChart的调用 -->
+        <ProvinceDimensionChart
+          :data="monthlyData"
+          :metric="monthlyMetric"
+          :selected-province="selectedRegion"
+          :selected-year="selectedYear"
+          :selected-month="selectedMonth"
+          @province-select="handleMapSelect"
+          v-if="monthlyData.length > 0"
+        />
+      </div>
+
+      <!-- 右侧面板：聚类分析说明 -->
+      <div class="pane">
+        <h3>聚类分析说明</h3>
+        <p class="scope-indicator">当前颗粒度：{{ scopeLabel }}</p>
+        <div class="cluster-info">
+          <div v-if="selectedRegion" class="cluster-details">
+            <h4>当前选中：{{ selectedRegion }}</h4>
+            <div class="cluster-stats">
+              <div class="stat">
+                <span class="label">污染特征：</span>
+                <span class="value">{{
+                  selectedClusterInfo.clusterType || "低污染区域"
+                }}</span>
+              </div>
+              <div class="stat">
+                <span class="label">主要污染物：</span>
+                <span class="value">{{
+                  selectedClusterInfo.primaryPollutant || "PM2.5"
+                }}</span>
+              </div>
+              <div class="stat">
+                <span class="label">相似省份：</span>
+                <div class="similar-provinces">
+                  <span
+                    v-for="province in selectedClusterInfo.similarProvinces || [
+                      '台湾省',
+                      '青海省',
+                      '内蒙古自治区',
+                    ]"
+                    :key="province"
+                    class="province-tag"
+                  >
+                    {{ province }}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div v-else class="no-selection">
+            <p>点击地图或降维图中的点查看详细信息</p>
+            <p class="hint">
+              降维图展示了各省份在污染特征空间中的相对位置，距离越近的省份污染特征越相似
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="layout secondary">
+      <div class="pane">
+        <h3>省份污染物径向分析</h3>
+        <ProvinceRadarChart
+          :data="monthlyData"
+          :metric="monthlyMetric"
+          :selected-province="selectedRegion"
+          :year="selectedYear"
+          :month="selectedMonth"
+        />
       </div>
       <div class="pane">
-        <MonthlyRing :items="monthlyRings" />
+        <!--            <h3>分析说明</h3>-->
+        <div class="radar-explanation">
+          <p>此图展示了各省份在6个主要污染物维度上的分布情况：</p>
+          <ul>
+            <li>每个轴代表一种污染物浓度</li>
+            <li>省份距离中心越远，该污染物浓度越高</li>
+            <li>图形面积越大，综合污染水平越高</li>
+            <li>红色高亮显示当前选中省份</li>
+          </ul>
+        </div>
       </div>
-      <div class="pane" v-if="!isEmbedded">
-        <!-- Add ProvinceDimensionChart support in MonthView -->
-        <!-- Assuming data is passed or calculated. MonthView typically handles its own data loading -->
-        <!-- Since tsneScatter computation is in App.vue, we might need a prop or re-compute it here if used -->
+    </section>
+
+    <!-- 在月度分析模板的合适位置添加 -->
+    <section class="layout single">
+      <div class="pane">
+        <h3>污染程度冰柱图分析</h3>
+        <div class="chart-description">
+          <p>
+            通过冰柱图展示全国-省份-城市的污染层级结构，条形长度表示污染程度
+          </p>
+        </div>
+
+        <IcicleChart
+          :data="monthlyData"
+          :metric="monthlyMetric"
+          :selected-region="selectedRegion"
+          :selected-year="selectedYear"
+          :selected-month="selectedMonth"
+          @region-select="handleMapSelect"
+          v-if="monthlyData.length > 0"
+        />
+
+        <div class="icicle-explanation">
+          <h4>图表解读说明</h4>
+          <ul>
+            <li>
+              <strong>全国层级</strong>：最顶层的条形，表示全国总体污染程度
+            </li>
+            <li>
+              <strong>省份层级</strong
+              >：第二层条形，各省份条形长度之和等于全国条形长度
+            </li>
+            <li>
+              <strong>城市层级</strong
+              >：最底层条形，各城市条形长度之和等于所属省份条形长度
+            </li>
+            <li>
+              <strong>颜色编码</strong
+              >：从绿色（低污染）到红色（高污染）表示污染程度
+            </li>
+            <li>
+              <strong>交互功能</strong
+              >：点击任一区域可选中该区域，与其他图表联动
+            </li>
+          </ul>
+
+          <div class="view-mode-info">
+            <h5>视图模式说明：</h5>
+            <p>
+              <strong>当前污染物模式</strong>：显示当前选中污染物（{{
+                monthlyMetric.toUpperCase()
+              }}）的浓度分布
+            </p>
+            <p>
+              <strong>综合污染指数模式</strong
+              >：基于6种污染物的加权平均值，更全面反映污染状况
+            </p>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -302,21 +438,39 @@ import {
   normalizeProvince,
 } from "../utils/dataLoader";
 import AQICompareLine from "./AQICompareLine.vue";
-import AQIRanking from "./AQIRanking.vue";
 import CityPollutionCalendar from "./CityPollutionCalendar.vue";
 import CityStackedPie from "./CityStackedPie.vue";
 import CityTypeRibbon from "./CityTypeRibbon.vue";
 import ControlPanel from "./ControlPanel.vue";
 import CorrHeatmap from "./CorrHeatmap.vue";
+import IcicleChart from "./IcicleChart.vue";
 import LevelBar from "./LevelBar.vue";
 import MapPanel from "./MapPanel.vue";
 import MonthlyBoxPlot from "./MonthlyBoxPlot.vue";
-import MonthlyRing from "./MonthlyRing.vue";
+import ProvinceDimensionChart from "./ProvinceDimensionChart.vue";
+import ProvinceRadarChart from "./ProvinceRadarChart.vue";
 import RadialPollutant from "./RadialPollutant.vue";
 import SeasonalLevelStack from "./SeasonalLevelStack.vue";
 import TrendLine from "./TrendLine.vue";
 import TypeMap from "./TypeMap.vue";
 import WindCompass from "./WindCompass.vue";
+
+const pollutantKeys = ["pm25", "pm10", "so2", "no2", "co", "o3"];
+const pollutantStandards = {
+  pm25: 35,
+  pm10: 50,
+  so2: 150,
+  no2: 100,
+  co: 4,
+  o3: 160,
+};
+
+const emptyClusterInfo = {
+  clusterType: "",
+  primaryPollutant: "",
+  similarProvinces: [],
+  pollutantLevels: [],
+};
 
 // Props
 const props = defineProps({
@@ -359,9 +513,41 @@ const monthlyAggregatedData = ref([]);
 const currentMonthDailyData = ref([]);
 const isMonthDetailLoading = ref(false);
 const mapGeoNames = ref([]);
+const analysisScope = ref("national");
 
 // Computed
-const selectedCity = computed(() => props.selectedRegion || "");
+const selectedCity = computed(() =>
+  analysisScope.value === "national" ? "" : props.selectedRegion || ""
+);
+
+const selectedYear = computed(() => props.currentYear);
+const selectedMonth = computed(() =>
+  String(currentMonth.value).padStart(2, "0")
+);
+const monthlyMetric = computed(() => props.metric);
+const scopeLabel = computed(() =>
+  analysisScope.value === "national" ? "全国" : "省份"
+);
+
+const monthlyData = computed(() => {
+  if (!monthlyAggregatedData.value || monthlyAggregatedData.value.length === 0)
+    return [];
+  const entry = monthlyAggregatedData.value.find(
+    (m) => m.month === currentMonth.value
+  );
+  return entry && Array.isArray(entry.data) ? entry.data : [];
+});
+
+const selectedClusterInfo = computed(() => {
+  if (!props.selectedRegion) {
+    return emptyClusterInfo;
+  }
+  const info = computeClusterInfo(
+    currentMonthDailyData.value,
+    props.selectedRegion
+  );
+  return info || emptyClusterInfo;
+});
 
 const monthMapSeries = computed(() => {
   if (currentMonthDailyData.value.length === 0) {
@@ -707,10 +893,12 @@ const monthWindVectors = computed(() => {
 });
 
 function handleMapSelect(name) {
+  analysisScope.value = name ? "province" : "national";
   emit("update:region", name);
 }
 
 function handleRankingSelect(name) {
+  analysisScope.value = name ? "province" : "national";
   emit("update:region", name);
 }
 
@@ -795,6 +983,155 @@ async function initMapData() {
   }
 }
 
+function computeClusterInfo(rows, provinceName) {
+  if (!provinceName || !rows || rows.length === 0) {
+    return null;
+  }
+
+  const normalizedTarget = normalizeProvince(provinceName);
+  if (!normalizedTarget) {
+    return null;
+  }
+
+  const provinceRows = rows.filter(
+    (row) => normalizeProvince(row.province) === normalizedTarget
+  );
+
+  if (provinceRows.length === 0) {
+    return null;
+  }
+
+  const averages = computeAverageByPollutant(provinceRows);
+
+  const pollutantLevels = pollutantKeys.map((key) => {
+    const value = averages[key] || 0;
+    const standard = pollutantStandards[key] || 1;
+    return {
+      key,
+      label: key.toUpperCase(),
+      value,
+      score: value / standard,
+    };
+  });
+
+  const totalScore = pollutantLevels.reduce((sum, item) => sum + item.score, 0);
+
+  let clusterType = "低污染区域";
+  if (totalScore > 4) clusterType = "高污染区域";
+  else if (totalScore > 2) clusterType = "中等污染区域";
+
+  const primaryPollutantEntry = pollutantLevels.reduce((max, item) =>
+    item.score > max.score ? item : max
+  );
+
+  const similarProvinces = calculateSimilarProvincesForMonth(
+    rows,
+    normalizedTarget
+  );
+
+  return {
+    clusterType,
+    primaryPollutant: primaryPollutantEntry?.label || "PM2.5",
+    similarProvinces,
+    pollutantLevels,
+  };
+}
+
+function computeAverageByPollutant(rows) {
+  const sums = Object.fromEntries(pollutantKeys.map((key) => [key, 0]));
+  const counts = Object.fromEntries(pollutantKeys.map((key) => [key, 0]));
+
+  rows.forEach((row) => {
+    pollutantKeys.forEach((key) => {
+      const value = getMetricValue(row, key);
+      if (value > 0) {
+        sums[key] += value;
+        counts[key] += 1;
+      }
+    });
+  });
+
+  return pollutantKeys.reduce((acc, key) => {
+    acc[key] = counts[key] ? sums[key] / counts[key] : 0;
+    return acc;
+  }, {});
+}
+
+function getMetricValue(row, key) {
+  const candidates = [
+    row[key],
+    row[`${key}_mean`],
+    row[`${key}_monthly_mean`],
+    row[`${key}_avg`],
+  ];
+
+  for (const candidate of candidates) {
+    const num = Number(candidate);
+    if (!Number.isNaN(num) && Number.isFinite(num)) {
+      return num;
+    }
+  }
+
+  return 0;
+}
+
+function calculateSimilarProvincesForMonth(rows, targetProvince, topN = 3) {
+  if (!rows || rows.length === 0 || !targetProvince) {
+    return [];
+  }
+
+  const provinceGroups = new Map();
+  rows.forEach((row) => {
+    const normalized = normalizeProvince(row.province);
+    if (!normalized) return;
+    if (!provinceGroups.has(normalized)) {
+      provinceGroups.set(normalized, []);
+    }
+    provinceGroups.get(normalized).push(row);
+  });
+
+  const provinceAverages = new Map();
+  provinceGroups.forEach((groupRows, province) => {
+    provinceAverages.set(province, computeAverageByPollutant(groupRows));
+  });
+
+  const targetAvg = provinceAverages.get(targetProvince);
+  if (!targetAvg) {
+    return [];
+  }
+
+  const distances = [];
+
+  provinceAverages.forEach((averages, province) => {
+    if (province === targetProvince) return;
+    const distance = Math.sqrt(
+      pollutantKeys.reduce((sum, key) => {
+        const diff =
+          normalizeForDistance(averages[key], key) -
+          normalizeForDistance(targetAvg[key], key);
+        return sum + diff * diff;
+      }, 0)
+    );
+    distances.push({ province, distance });
+  });
+
+  distances.sort((a, b) => a.distance - b.distance);
+  return distances.slice(0, topN).map((item) => item.province);
+}
+
+function normalizeForDistance(value, pollutant) {
+  const baseline = pollutantStandards[pollutant] || 1;
+  return Math.log1p(Math.max(value, 0) / baseline);
+}
+
+watch(
+  () => props.selectedRegion,
+  (region) => {
+    analysisScope.value = region ? "province" : "national";
+  },
+  { immediate: true }
+);
+
 watch(
   () => props.currentYear,
   async () => {
@@ -872,6 +1209,13 @@ watch(
   color: #444;
   font-family: "JetBrains Mono", monospace;
   font-size: 13px;
+}
+
+.scope-indicator {
+  font-size: 12px;
+  color: #666;
+  margin: 4px 0 12px;
+  font-family: "JetBrains Mono", monospace;
 }
 
 .time-bar {
@@ -1109,5 +1453,9 @@ watch(
   margin-bottom: 20px;
   width: 100%;
   box-sizing: border-box;
+}
+
+.single {
+  grid-template-columns: 1fr;
 }
 </style>

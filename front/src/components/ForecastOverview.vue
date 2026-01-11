@@ -705,6 +705,15 @@ const renderErrorBox = () => {
     errorBoxChart = echarts.init(errorBoxRef.value);
   }
 
+  const percentile = (arr, ratio) => {
+    if (!arr.length) return 0;
+    const idx = (arr.length - 1) * ratio;
+    const lower = Math.floor(idx);
+    const upper = Math.ceil(idx);
+    if (lower === upper) return arr[lower];
+    return arr[lower] + (arr[upper] - arr[lower]) * (idx - lower);
+  };
+
   const errors = pollutants.map((p) => {
     const errs = [];
     for (
@@ -723,10 +732,16 @@ const renderErrorBox = () => {
 
   const boxData = errors.map((arr) => {
     if (arr.length === 0) return [0, 0, 0, 0, 0];
-    const q1 = arr[Math.floor(arr.length * 0.25)];
-    const median = arr[Math.floor(arr.length * 0.5)];
-    const q3 = arr[Math.floor(arr.length * 0.75)];
-    return [arr[0], q1, median, q3, arr[arr.length - 1]];
+    const q1 = percentile(arr, 0.25);
+    const median = percentile(arr, 0.5);
+    const q3 = percentile(arr, 0.75);
+    const iqr = q3 - q1;
+    const lowerFence = Math.max(q1 - 1.5 * iqr, 0);
+    const upperFence = q3 + 1.5 * iqr;
+    const minVal = arr.find((v) => v >= lowerFence) ?? arr[0];
+    const maxVal =
+      [...arr].reverse().find((v) => v <= upperFence) ?? arr[arr.length - 1];
+    return [minVal, q1, median, q3, maxVal];
   });
 
   const option = {
@@ -745,7 +760,7 @@ const renderErrorBox = () => {
     },
     yAxis: {
       type: "value",
-      name: "误差绝对值",
+      name: "预测绝对误差",
       axisLabel: { color: "#666" },
       splitLine: { lineStyle: { color: "rgba(0,0,0,0.06)" } },
     },
