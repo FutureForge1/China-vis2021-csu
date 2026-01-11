@@ -403,6 +403,35 @@
       </div>
     </div>
 
+    <!-- Row 7: Meteorology-Pollution Scatter -->
+    <section class="layout secondary">
+      <div class="pane">
+        <MeteoScatter
+          :data="currentMonthDailyData"
+          xMetric="temp"
+          yMetric="pm25"
+        />
+      </div>
+      <div class="pane">
+        <MultiCityTrend
+          :monthlyData="monthlyAggregatedData"
+          :metric="metric"
+          :year="currentYear"
+        />
+      </div>
+    </section>
+
+    <!-- Row 8: Province Yearly Heatmap -->
+    <section class="layout single">
+      <div class="pane">
+        <ProvinceYearlyHeatmap
+          :monthlyData="monthlyAggregatedData"
+          :metric="metric"
+          :year="currentYear"
+        />
+      </div>
+    </section>
+
     <!-- City Calendar (Full Width) -->
     <div class="pane full-width-pane">
       <CityPollutionCalendar
@@ -454,6 +483,9 @@ import SeasonalLevelStack from "./SeasonalLevelStack.vue";
 import TrendLine from "./TrendLine.vue";
 import TypeMap from "./TypeMap.vue";
 import WindCompass from "./WindCompass.vue";
+import MeteoScatter from "./MeteoScatter.vue";
+import MultiCityTrend from "./MultiCityTrend.vue";
+import ProvinceYearlyHeatmap from "./ProvinceYearlyHeatmap.vue";
 
 const pollutantKeys = ["pm25", "pm10", "so2", "no2", "co", "o3"];
 const pollutantStandards = {
