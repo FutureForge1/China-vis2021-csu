@@ -634,7 +634,7 @@ const renderHeatmap = () => {
   heatmapChart.setOption(option);
 };
 
-// 4. 渲染AQI等级分布
+// 4. 渲染AQI等级分布（双环图）
 const renderAQIDist = () => {
   if (!aqiDistRef.value) return;
   if (!aqiDistChart) {
@@ -642,61 +642,259 @@ const renderAQIDist = () => {
   }
 
   const levels = ["优", "良", "轻度", "中度", "重度", "严重"];
+  const levelColors = {
+    优: "#00e400",
+    良: "#ffff00",
+    轻度: "#ff7e00",
+    中度: "#ff0000",
+    重度: "#8f3f97",
+    严重: "#7e0023",
+  };
+
   const actualLevels = { 优: 0, 良: 0, 轻度: 0, 中度: 0, 重度: 0, 严重: 0 };
   const predLevels = { 优: 0, 良: 0, 轻度: 0, 中度: 0, 重度: 0, 严重: 0 };
+  let matchCount = 0; // 等级一致的数量
 
-  props.actualData.forEach((d) => {
-    const aqi = calculateAQI(d.pm25, d.pm10, d.so2, d.no2, d.co, d.o3);
-    actualLevels[getAQILevel(aqi)]++;
-  });
+  // 计算等级分布和一致率
+  const minLength = Math.min(props.actualData.length, props.predData.length);
+  for (let i = 0; i < minLength; i++) {
+    const actual = props.actualData[i];
+    const pred = props.predData[i];
 
-  props.predData.forEach((d) => {
-    const aqi = calculateAQI(d.pm25, d.pm10, d.so2, d.no2, d.co, d.o3);
-    predLevels[getAQILevel(aqi)]++;
-  });
+    const actualAqi = calculateAQI(
+      actual.pm25,
+      actual.pm10,
+      actual.so2,
+      actual.no2,
+      actual.co,
+      actual.o3
+    );
+    const predAqi = calculateAQI(
+      pred.pm25,
+      pred.pm10,
+      pred.so2,
+      pred.no2,
+      pred.co,
+      pred.o3
+    );
+
+    const actualLevel = getAQILevel(actualAqi);
+    const predLevel = getAQILevel(predAqi);
+
+    actualLevels[actualLevel]++;
+    predLevels[predLevel]++;
+
+    if (actualLevel === predLevel) matchCount++;
+  }
+
+  const totalCount = minLength || 1;
+  const consistencyRate = ((matchCount / totalCount) * 100).toFixed(1);
+
+  // 构建内环数据（实况）
+  const innerData = levels
+    .map((level) => ({
+      name: level,
+      value: actualLevels[level],
+      itemStyle: {
+        color: {
+          type: "radial",
+          x: 0.5,
+          y: 0.5,
+          r: 0.5,
+          colorStops: [
+            { offset: 0, color: adjustBrightness(levelColors[level], 0.6) },
+            { offset: 1, color: levelColors[level] },
+          ],
+        },
+        borderColor: "#fff",
+        borderWidth: 2,
+      },
+      level: level,
+    }))
+    .filter((d) => d.value > 0);
+
+  // 构建外环数据（预测）
+  const outerData = levels
+    .map((level) => ({
+      name: level,
+      value: predLevels[level],
+      itemStyle: {
+        color: {
+          type: "radial",
+          x: 0.5,
+          y: 0.5,
+          r: 0.5,
+          colorStops: [
+            { offset: 0, color: adjustBrightness(levelColors[level], 0.8) },
+            { offset: 1, color: adjustBrightness(levelColors[level], 1.2) },
+          ],
+        },
+        borderColor: "#fff",
+        borderWidth: 2,
+      },
+      level: level,
+    }))
+    .filter((d) => d.value > 0);
 
   const option = {
     backgroundColor: "transparent",
-    tooltip: { trigger: "axis" },
+    title: {
+      text: `${consistencyRate}%`,
+      subtext: `等级一致率\n${matchCount}/${totalCount} 城市`,
+      left: "center",
+      top: "center",
+      textStyle: {
+        fontSize: 28,
+        fontWeight: "bold",
+        color: "#2c3e50",
+      },
+      subtextStyle: {
+        fontSize: 12,
+        color: "#7f8c8d",
+        lineHeight: 18,
+      },
+    },
+    tooltip: {
+      trigger: "item",
+      formatter: (params) => {
+        const { name, value, percent, seriesName } = params;
+        const otherSeries = seriesName === "实况" ? predLevels : actualLevels;
+        const otherValue = otherSeries[name] || 0;
+        const otherPercent =
+          totalCount > 0 ? ((otherValue / totalCount) * 100).toFixed(1) : 0;
+
+        return `
+          <div style="padding: 8px;">
+            <div style="font-weight: bold; margin-bottom: 6px; color: ${
+              levelColors[name]
+            };">
+              ${name}
+            </div>
+            <div style="color: #e67e22;">
+              实况: <strong>${actualLevels[name]}</strong> (${(
+          (actualLevels[name] / totalCount) *
+          100
+        ).toFixed(1)}%)
+            </div>
+            <div style="color: #3498db;">
+              预测: <strong>${predLevels[name]}</strong> (${(
+          (predLevels[name] / totalCount) *
+          100
+        ).toFixed(1)}%)
+            </div>
+            <div style="margin-top: 4px; font-size: 11px; color: #95a5a6;">
+              点击过滤平行坐标样本
+            </div>
+          </div>
+        `;
+      },
+    },
     legend: {
-      data: ["实际", "预测"],
-      top: 10,
-      textStyle: { color: "#333" },
-    },
-    grid: {
-      left: "10%",
-      right: "10%",
-      top: "20%",
-      bottom: "15%",
-    },
-    xAxis: {
-      type: "category",
+      orient: "vertical",
+      left: "left",
+      top: "middle",
       data: levels,
-      axisLabel: { color: "#666" },
-    },
-    yAxis: {
-      type: "value",
-      axisLabel: { color: "#666" },
-      splitLine: { lineStyle: { color: "rgba(0,0,0,0.06)" } },
+      textStyle: { fontSize: 11 },
+      formatter: (name) => {
+        const actualVal = actualLevels[name] || 0;
+        const predVal = predLevels[name] || 0;
+        return `${name}`;
+      },
     },
     series: [
       {
-        name: "实际",
-        type: "bar",
-        data: levels.map((l) => actualLevels[l]),
-        itemStyle: { color: "#e67e22" },
+        name: "实况",
+        type: "pie",
+        radius: ["0%", "40%"],
+        center: ["50%", "50%"],
+        label: {
+          show: false,
+        },
+        labelLine: {
+          show: false,
+        },
+        data: innerData,
+        emphasis: {
+          itemStyle: {
+            shadowBlur: 10,
+            shadowOffsetX: 0,
+            shadowColor: "rgba(0, 0, 0, 0.3)",
+          },
+        },
       },
       {
         name: "预测",
-        type: "bar",
-        data: levels.map((l) => predLevels[l]),
-        itemStyle: { color: "#3498db" },
+        type: "pie",
+        radius: ["50%", "70%"],
+        center: ["50%", "50%"],
+        label: {
+          show: true,
+          position: "outside",
+          formatter: (params) => {
+            const { name, value, percent } = params;
+            return `{level|${name}}\n{value|${value}} ({percent|${percent}%})`;
+          },
+          rich: {
+            level: {
+              fontSize: 11,
+              fontWeight: "bold",
+              color: "#2c3e50",
+            },
+            value: {
+              fontSize: 10,
+              color: "#34495e",
+            },
+            percent: {
+              fontSize: 10,
+              color: "#7f8c8d",
+            },
+          },
+        },
+        labelLine: {
+          show: true,
+          length: 10,
+          length2: 15,
+          lineStyle: {
+            color: "#bdc3c7",
+            width: 1,
+          },
+        },
+        data: outerData,
+        emphasis: {
+          itemStyle: {
+            shadowBlur: 10,
+            shadowOffsetX: 0,
+            shadowColor: "rgba(0, 0, 0, 0.3)",
+          },
+        },
       },
     ],
   };
 
   aqiDistChart.setOption(option);
+
+  // 添加点击事件，联动过滤平行坐标
+  aqiDistChart.off("click");
+  aqiDistChart.on("click", (params) => {
+    if (params.componentSubType === "pie") {
+      const selectedLevel = params.data.level;
+      emit("level-filter", selectedLevel);
+      console.log(`[AQIDist] 点击等级: ${selectedLevel}`);
+    }
+  });
 };
+
+// 辅助函数：调整颜色亮度
+function adjustBrightness(color, factor) {
+  // 简单的颜色亮度调整
+  const hex = color.replace("#", "");
+  const r = Math.min(255, Math.round(parseInt(hex.substr(0, 2), 16) * factor));
+  const g = Math.min(255, Math.round(parseInt(hex.substr(2, 2), 16) * factor));
+  const b = Math.min(255, Math.round(parseInt(hex.substr(4, 2), 16) * factor));
+  return `#${r.toString(16).padStart(2, "0")}${g
+    .toString(16)
+    .padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+}
 
 // 5. 渲染平行坐标系
 const renderParallel = () => {
